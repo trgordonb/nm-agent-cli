@@ -1270,6 +1270,7 @@ dependencies = [
     { name = "langgraph" },
     { name = "loguru" },
     { name = "markdownify" },
+    { name = "nm-memory-layer" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -1293,6 +1294,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.2.10" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markdownify", specifier = ">=1.2.3" },
+    { name = "nm-memory-layer", editable = "../nm-memory-layer" },
     { name = "openai", specifier = ">=2.53.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -1758,6 +1760,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/83/f8/51569ac65d696c8ec
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/c4/c2971a3ba4c6103a3d10c4b0f24f461ddc027f0f09763220cf35ca1401b3/nest_asyncio-1.6.0-py3-none-any.whl", hash = "sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c", size = 5195, upload-time = "2024-01-21T14:25:17.223Z" },
 ]
+
+[[package]]
+name = "nm-memory-layer"
+version = "0.1.0"
+source = { editable = "../nm-memory-layer" }
+dependencies = [
+    { name = "langchain-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "langchain-core", specifier = ">=1.0.0" }]
 
 [[package]]
 name = "numpy"

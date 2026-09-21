@@ -14,3 +14,7 @@ wheels/
 workspace/
 token-use/
 skills/
+
+# Local session store
+sessions.db
+sessions.db-*

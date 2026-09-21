@@ -18,6 +18,7 @@ dependencies = [
     "langgraph>=1.2.10",
     "loguru>=0.7.3",
     "markdownify>=1.2.3",
+    "nm-memory-layer",
     "openai>=2.53.0",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
@@ -25,3 +26,6 @@ dependencies = [
     "statistics>=1.0.3.5",
     "tavily>=1.1.0",
 ]
+
+[tool.uv.sources]
+nm-memory-layer = { path = "../nm-memory-layer", editable = true }
