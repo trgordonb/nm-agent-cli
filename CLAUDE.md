@@ -9,7 +9,7 @@ LangGraph agent (financial research assistant: EDGAR, market data, web search). 
 
 The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as an **editable path dependency** via `[tool.uv.sources]` in `pyproject.toml`. Edit memory-layer code there, not here — changes apply immediately without reinstalling.
 
-Current phase: **Phases 1–4 — session store + prompt memory + periodic nudge + skills layer**. OpenViking is fully out of the `alt-main.py` path.
+Current phase: **All five phases complete — session store, prompt memory, nudge, skills, search summarization, context compression.** OpenViking is fully out of the `alt-main.py` path.
 
 ### How alt-main.py persists sessions
 
@@ -20,6 +20,7 @@ Current phase: **Phases 1–4 — session store + prompt memory + periodic nudge
 - The agent gets `skill_manage` + `load_skill` for procedural memory: the `./skills/` index (names + descriptions only) is injected once per session; full SKILL.md loads on demand — replacing OpenViking's `<skill>` abstract / `viking_read` flow with zero server dependency.
 - After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory (`memory_manage`) or create/patch skills (`skill_manage`) — no user input, and nudge activity is never archived to `sessions.db`.
 - `session_search` can optionally condense its FTS5 excerpts through a secondary LLM (OpenRouter) before they enter context: `SEARCH_SUMMARIZER_ENABLED=true` + `OPENROUTER_MODEL` in `.env` turn it on; disabled or failing → raw excerpts (graceful fallback). The CLI banner shows which mode is active; summarized results carry a `[session_search: condensed by ...]` header.
+- Before each turn, if `COMPRESSION_ENABLED=true` and the history exceeds `COMPRESSION_TOKEN_THRESHOLD` (default 24000), middle turns are summarized by the OpenRouter model into a `<conversation_summary>` SystemMessage; the first + recent `COMPRESSION_KEEP_RECENT_TURNS` turns stay verbatim; lineage is recorded to the `compressions` table in `sessions.db`. Failure → history untouched.
 - `tools.py` is shared with `main.py`, so OpenViking tool bindings are still created at import; `alt-main.py` filters them out (`viking_` prefix) when binding tools.
 
 ### Remaining OpenViking usage in alt-main.py

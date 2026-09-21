@@ -25,6 +25,7 @@ from nm_memory_layer import (
     build_nudge_prompt,
     create_load_skill_tool,
     create_memory_manage_tool,
+    create_openrouter_compressor,
     create_openrouter_summarizer,
     create_session_search_tool,
     create_skill_manage_tool,
@@ -164,6 +165,8 @@ nudge_policy = NudgePolicy(interval=int(os.getenv("NUDGE_INTERVAL", str(DEFAULT_
 skill_library = SkillLibrary()
 skill_manage_tool = create_skill_manage_tool(skill_library)
 load_skill_tool = create_load_skill_tool(skill_library)
+
+context_compressor = create_openrouter_compressor()
 
 _FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
 
@@ -416,7 +419,8 @@ async def run_cli(resume_session_id: str | None = None):
     print("=" * 50)
     print(f"\nHello {user}\n")
     print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}")
-    print(f"Search summarizer: {search_summarizer.label if search_summarizer else 'disabled (raw excerpts)'}\n")
+    print(f"Search summarizer: {search_summarizer.label if search_summarizer else 'disabled (raw excerpts)'}")
+    print(f"Context compressor: {context_compressor.label if context_compressor else 'disabled'}\n")
     print(f"Session ID: {session_id} (pass --session-id to resume)\n")
     messages = []
 
@@ -439,6 +443,30 @@ async def run_cli(resume_session_id: str | None = None):
 
                 if not user_input:
                     continue
+
+                # Pre-flight context compression (Hermes-style): before hitting
+                # the token threshold, middle turns are summarized via the
+                # secondary LLM and lineage is recorded in the session store.
+                if context_compressor:
+                    try:
+                        cres = await asyncio.to_thread(context_compressor.compress, messages)
+                        if cres.compressed:
+                            store.record_compression(
+                                session_id,
+                                summary=cres.summary,
+                                summarized_first_turn=cres.summarized_first_turn,
+                                summarized_last_turn=cres.summarized_last_turn,
+                                message_count=cres.original_count,
+                                model=cres.model_label,
+                            )
+                            messages = cres.compressed_messages
+                            print(
+                                f"\n[context compression] turns {cres.summarized_first_turn}-"
+                                f"{cres.summarized_last_turn} summarized by {cres.model_label} "
+                                f"({cres.original_count} -> {cres.compressed_count} messages, {cres.elapsed_ms}ms)"
+                            )
+                    except Exception as comp_exc:
+                        logging.warning(f"Context compression failed: {str(comp_exc)[:200]}")
 
                 # Add user message
                 messages.append(HumanMessage(content=user_input))

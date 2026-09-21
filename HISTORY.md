@@ -2,6 +2,15 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-21 — branch `memory-layer` — Phase 5: context compression with lineage
+
+Final phase of the Hermes-style memory stack.
+
+- `alt-main.py` builds the OpenRouter-backed compressor (`create_openrouter_compressor()`) and runs a pre-flight check before each user turn (in a worker thread): when the history's estimated token size exceeds `COMPRESSION_TOKEN_THRESHOLD`, the middle turns are summarized into a `<conversation_summary>` SystemMessage; turn 1 (the original task) and the last `COMPRESSION_KEEP_RECENT_TURNS` turns stay verbatim; tool-call pairs are never split.
+- Lineage (summarized turn range + summary + model + message count) is recorded to the `compressions` table in `sessions.db`; the archive always retains every turn verbatim and searchable via `session_search`.
+- Failure semantics: model error/empty output/too-few-turns → original history untouched. The CLI banner shows compressor mode; compression events print a `[context compression]` line.
+- `.env` gains `COMPRESSION_ENABLED` (off by default), `COMPRESSION_TOKEN_THRESHOLD` (24000), `COMPRESSION_KEEP_RECENT_TURNS` (2).
+
 ## 2026-09-21 — branch `memory-layer` — search summarization via OpenRouter (env-toggled)
 
 - `alt-main.py` builds the optional secondary-LLM summarizer (`create_openrouter_summarizer()`) and passes it to `create_session_search_tool`; the CLI banner shows the active mode (`openrouter/<model>` vs `disabled (raw excerpts)`).
