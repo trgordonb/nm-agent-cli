@@ -30,10 +30,27 @@ from nm_memory_layer import (
     flatten_transcript,
 )
 
-load_dotenv()
+# override=True: .env is the source of truth for this project. Without it,
+# dotenv will NOT replace variables already exported in the shell (e.g. an
+# OPENAI_BASE_URL exported in ~/.bashrc silently wins and redirects the LLM).
+load_dotenv(override=True)
+
+# --- Logging -----------------------------------------------------------------
+# INFO shows: every LLM call attempt (model + base_url), retry decisions, and —
+# via the httpx logger — the actual request line of every HTTP call made by the
+# process (e.g. "HTTP Request: POST https://api.z.ai/api/paas/v4/chat/completions
+# HTTP/1.1 200 OK"), which is how we verify which endpoint is really hit.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,  # imported libs may pre-add root handlers, making plain basicConfig a no-op
+)
+logging.getLogger("httpx").setLevel(logging.INFO)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 _last_call_time = 0.0
-_MIN_INTERVAL = 4.0 
+_MIN_INTERVAL = 4.0
 
 # Initialize the LLM
 
@@ -44,6 +61,23 @@ model = ChatOpenAI(
     api_key=os.getenv("OPENAI_API_KEY",""), # type: ignore
     base_url=os.getenv("OPENAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
 )
+
+
+def _endpoint_hint(fn) -> str:
+    """Describe which model/endpoint a wrapped LLM method points at."""
+    target = getattr(fn, "__self__", None)
+    if target is None:
+        return "target=?"
+    base_url = getattr(target, "openai_api_base", None) or getattr(target, "base_url", "")
+    model_name = getattr(target, "model_name", None) or getattr(target, "model", "")
+    return f"model={model_name} base_url={base_url}"
+
+
+def _error_hint(exc: Exception) -> str:
+    """Extract status + request URL from an SDK/httpx exception when present."""
+    url = getattr(getattr(exc, "request", None), "url", "")
+    status = getattr(exc, "status_code", "")
+    return f"{type(exc).__name__}{f' status={status}' if status != '' else ''}{f' url={url}' if url else ''}"
 
 def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
     """Wrap a method with manual rate limiting and retry logic for transient HTTP errors."""
@@ -61,6 +95,7 @@ def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
         last_exc = None
         for attempt in range(1, max_attempts + 1):
             try:
+                logging.info(f"LLM call (sync) attempt {attempt}/{max_attempts} [{_endpoint_hint(fn)}]")
                 _last_call_time = time.time()
                 return fn(*args, **kwargs)
             except Exception as e:
@@ -68,10 +103,12 @@ def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
                 if any(code in err_str for code in ("500", "502", "503", "504", "Connection", "Timeout", "429", "rate", "socket", "timeout")):
                     last_exc = e
                     wait = backoff ** attempt
-                    logging.warning(f"Retry {attempt}/{max_attempts} after {wait}s: {err_str[:200]}")
+                    logging.warning(f"LLM retry {attempt}/{max_attempts} after {wait}s: {_error_hint(e)}: {err_str[:200]}")
                     time.sleep(wait)
                 else:
+                    logging.error(f"LLM call failed (non-retryable) [{_endpoint_hint(fn)}]: {_error_hint(e)}: {err_str[:300]}")
                     raise
+        logging.error(f"LLM call failed after {max_attempts} attempts [{_endpoint_hint(fn)}]: {_error_hint(last_exc) if last_exc else ''}")
         raise last_exc # type: ignore
     return wrapper
 
@@ -91,6 +128,7 @@ def _async_rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
         last_exc = None
         for attempt in range(1, max_attempts + 1):
             try:
+                logging.info(f"LLM call (async) attempt {attempt}/{max_attempts} [{_endpoint_hint(fn)}]")
                 _last_call_time = time.time()
                 return await fn(*args, **kwargs)
             except Exception as e:
@@ -98,10 +136,12 @@ def _async_rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
                 if any(code in err_str for code in ("500", "502", "503", "504", "Connection", "Timeout", "429", "rate", "socket", "timeout")):
                     last_exc = e
                     wait = backoff ** attempt
-                    logging.warning(f"Retry {attempt}/{max_attempts} after {wait}s: {err_str[:200]}")
+                    logging.warning(f"LLM retry {attempt}/{max_attempts} after {wait}s: {_error_hint(e)}: {err_str[:200]}")
                     await asyncio.sleep(wait)
                 else:
+                    logging.error(f"LLM call failed (non-retryable) [{_endpoint_hint(fn)}]: {_error_hint(e)}: {err_str[:300]}")
                     raise
+        logging.error(f"LLM call failed after {max_attempts} attempts [{_endpoint_hint(fn)}]: {_error_hint(last_exc) if last_exc else ''}")
         raise last_exc # type: ignore
     return wrapper
 
