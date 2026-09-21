@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Annotated, Any, Sequence, TypedDict
 
 from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
@@ -336,6 +336,96 @@ class WikiState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
+CONTEXT_CHAR_BUDGET = 1_200_000
+KEEP_RECENT_MESSAGES = 8
+
+
+def _block_reasonable_size(block: Sequence[BaseMessage]) -> int:
+    return sum(len(str(getattr(m, "content", "") or "")) for m in block) + 60
+
+
+def _group_blocks(messages: Sequence[BaseMessage]) -> list[list[BaseMessage]]:
+    blocks: list[list[BaseMessage]] = []
+    i = 0
+    while i < len(messages):
+        m = messages[i]
+        if isinstance(m, AIMessage) and m.tool_calls:
+            block = [m]
+            i += 1
+            while i < len(messages) and isinstance(messages[i], ToolMessage):
+                block.append(messages[i])
+                i += 1
+            blocks.append(block)
+        else:
+            blocks.append([m])
+            i += 1
+    return blocks
+
+
+def _compact_messages(
+    messages: Sequence[BaseMessage],
+    *,
+    keep_recent: int,
+    budget_chars: int,
+) -> list[BaseMessage]:
+    """Build the view sent to the LLM: system + initial task + recent turns
+    verbatim, older tool history folded into the task prompt. State history
+    stays intact; only what is re-sent each iteration is bounded.
+
+    Sequencing constraints for strict providers (e.g. Zai/GLM code 1214):
+    - never emit consecutive assistant messages;
+    - never emit a ToolMessage without its assistant tool_calls (blocks are
+      kept whole);
+    - never emit an empty-content tool message.
+    """
+    msgs = list(messages)
+    if len(msgs) <= 3:
+        return msgs
+    head = msgs[:1] if isinstance(msgs[0], SystemMessage) else list(msgs[:1])
+    body = msgs[len(head):]
+    first_human: BaseMessage | None = None
+    if body and isinstance(body[0], HumanMessage) and not getattr(body[0], "tool_calls", None):
+        first_human = body[0]
+        body = body[1:]
+    blocks = _group_blocks(body)
+
+    keep: list[list[BaseMessage]] = []
+    used = 0
+    for block in reversed(blocks):
+        size = _block_reasonable_size(block)
+        if len(keep) >= keep_recent or used + size > budget_chars:
+            break
+        keep.insert(0, block)
+        used += size
+    if not keep and blocks:
+        keep = [blocks[-1]]
+    dropped = len(blocks) - len(keep)
+    if dropped == 0:
+        return list(msgs)
+    digest = (
+        f"\n\n[History compacted: {dropped} earlier agent/tool step(s) omitted. Their "
+        "evidence is already integrated into the pages written under output/. "
+        "Continue: finish remaining pages or call submit_wiki.]"
+    )
+    if first_human is not None:
+        lead = [
+            *head,
+            HumanMessage(content=str(first_human.content or "") + digest),
+        ]
+    else:
+        lead = head + [HumanMessage(content=digest.strip())]
+    view: list[BaseMessage] = list(lead)
+    for block in keep:
+        for m in block:
+            if isinstance(m, ToolMessage) and not str(m.content or "").strip():
+                view.append(
+                    ToolMessage(content="(empty result)", tool_call_id=m.tool_call_id)
+                )
+            else:
+                view.append(m)
+    return view
+
+
 TOOLS = [read_file, list_files, grep_files, write_output_file, ov_search, ov_read, ov_ls, submit_wiki]
 TOOL_NODE = ToolNode([t for t in TOOLS if t.name != "submit_wiki"], handle_tool_errors=True)
 
@@ -436,44 +526,29 @@ def _build_graph() -> Any:
 
 
 async def _call_model(state: WikiState) -> dict[str, Any]:
-    response = await MODEL_WITH_TOOLS.ainvoke(list(state["messages"]))
+    view = _compact_messages(
+        state["messages"],
+        keep_recent=KEEP_RECENT_MESSAGES,
+        budget_chars=CONTEXT_CHAR_BUDGET,
+    )
+    response = await MODEL_WITH_TOOLS.ainvoke(view)
     return {"messages": [response]}
 
 
 MODEL_WITH_TOOLS: Any = None
 
 
-async def main() -> None:
+async def ingest_once(args: argparse.Namespace, *, run_dir: Path, ov: AsyncHTTPClient) -> dict[str, Any]:
+    """One compilation run of args.from_uri into args.to_uri. Returns a summary dict."""
     global RUN_DIR, OV, TARGET_URI, MODEL_WITH_TOOLS
     global SOURCE_HASHES, EXISTING_LOG, EXISTING_LOG_TEXT, FRESHNESS, EXISTING_PAGE_COUNT
 
-    parser = argparse.ArgumentParser(description="LLM-wiki ingestion via LangGraph + OpenViking (no gateway)")
-    parser.add_argument("--from", dest="from_uri", required=True, help="Source viking:// URI")
-    parser.add_argument("--to", dest="to_uri", required=True, help="Target viking:// URI for the wiki")
-    parser.add_argument("--skill", dest="skill_uri", default="", help="Skill package viking:// URI to package into context")
-    parser.add_argument("--reason", default="", help="Why this wiki is being compiled")
-    parser.add_argument("--model", default=os.getenv("WIKI_MODEL", "glm-4.7"))
-    parser.add_argument("--temperature", type=float, default=0.3)
-    parser.add_argument("--max-iterations", type=int, default=40)
-    parser.add_argument("--max-files", type=int, default=300)
-    parser.add_argument("--max-total-mb", type=float, default=64.0)
-    parser.add_argument("--max-file-kb", type=float, default=512.0)
-    parser.add_argument("--timeout", type=float, default=900.0, help="HTTP client timeout for OpenViking calls (batch_write waits server-side)")
-    parser.add_argument("--materialize-only", action="store_true", help="Materialize sources/skill then exit")
-    args = parser.parse_args()
-
-    if not _OPENVIKING_KEY:
-        raise SystemExit("OPENVIKING_API_KEY is not set")
+    RUN_DIR = run_dir
+    OV = ov
     TARGET_URI = args.to_uri
-
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    RUN_DIR = _WORKSPACE_ROOT / f"wiki-runs/{stamp}"
     for sub in ("sources", "skill", "output", "existing_target"):
         (RUN_DIR / sub).mkdir(parents=True, exist_ok=True)
     print(f"workspace: {RUN_DIR}")
-
-    OV = AsyncHTTPClient(url=os.getenv("OPENVIKING_URL"), api_key=_OPENVIKING_KEY, timeout=args.timeout)
-    await OV.initialize()
 
     t0 = time.perf_counter()
     manifest, failures, total_in_tree = await _materialize_tree(
@@ -537,8 +612,19 @@ async def main() -> None:
           f"{len(FRESHNESS['unchanged'])} unchanged")
 
     if args.materialize_only:
-        await OV.close()
-        return
+        return {
+            "skipped": False,
+            "new": len(FRESHNESS["new"]),
+            "changed": len(FRESHNESS["changed"]),
+            "unchanged": len(FRESHNESS["unchanged"]),
+            "pages": 0,
+            "summary": "(materialize-only)",
+        }
+
+    if getattr(args, "per_source", False) and not FRESHNESS["new"] and not FRESHNESS["changed"]:
+        print(f"[skip] {args.from_uri}: all {len(FRESHNESS['unchanged'])} source file(s) unchanged")
+        return {"skipped": True, "new": 0, "changed": 0,
+                "unchanged": len(FRESHNESS["unchanged"]), "pages": 0, "summary": "(all unchanged)"}
 
     def _bounded_uris(uris: list[str], cap: int = 25) -> str:
         lines = [f"  - {uri}" for uri in uris[:cap]]
@@ -616,12 +702,111 @@ async def main() -> None:
         config={"recursion_limit": args.max_iterations * 2 + 20},
     )
     final_messages = final_state["messages"]
+    agent_summary = ""
     for message in reversed(final_messages):
         if isinstance(message, AIMessage) and message.content:
             print("\n=== Agent summary ===\n" + str(message.content)[:2000])
+            agent_summary = str(message.content)[:500]
             break
 
-    await OV.close()
+    pages_written = len([
+        p for p in (RUN_DIR / "output").rglob("*")
+        if p.is_file() and p.stat().st_size > 0
+    ])
+    return {
+        "skipped": False,
+        "new": len(FRESHNESS["new"]),
+        "changed": len(FRESHNESS["changed"]),
+        "unchanged": len(FRESHNESS["unchanged"]),
+        "pages": pages_written,
+        "summary": agent_summary,
+    }
+
+
+async def run_per_source(args: argparse.Namespace) -> None:
+    """Run ingest_once once per child directory of --from, skipping dirs whose
+    files are all unchanged against the wiki's ingestion log."""
+    global OV
+    OV = AsyncHTTPClient(url=os.getenv("OPENVIKING_URL"), api_key=_OPENVIKING_KEY, timeout=args.timeout)
+    await OV.initialize()
+    try:
+        entries = await OV.ls(uri=args.from_uri, node_limit=500)
+        children = sorted(
+            (e for e in entries if isinstance(e, dict) and e.get("isDir")),
+            key=lambda e: str(e.get("name") or ""),
+        )
+        if not children:
+            print("no child directories under --from; falling back to a single run")
+            await ingest_once(args, run_dir=_new_run_dir(), ov=OV)
+            return
+        print(f"per-source mode: {len(children)} source dir(s) under {args.from_uri} (LLM runs for new/changed only)")
+        results: list[tuple[str, dict[str, Any]]] = []
+        for idx, child in enumerate(children, 1):
+            label = _rel_from_uri(str(child.get("uri") or ""), args.from_uri)
+            sub_args = argparse.Namespace(**{**vars(args), "from_uri": str(child.get("uri") or "")})
+            print(f"\n=== [{idx}/{len(children)}] {label} ===")
+            result = await ingest_once(sub_args, run_dir=_new_run_dir(idx), ov=OV)
+            results.append((label, result))
+        print("\n=== per-source summary ===")
+        for label, result in results:
+            if result.get("skipped"):
+                print(f"  SKIP  {label} ({result.get('unchanged', 0)} unchanged file(s))")
+            else:
+                print(
+                    f"  RUN   {label}: new={result.get('new', 0)}, changed={result.get('changed', 0)}, "
+                    f"unchanged={result.get('unchanged', 0)}, pages written={result.get('pages', 0)}"
+                )
+    finally:
+        await OV.close()
+
+
+def _new_run_dir(index: int = 0) -> Path:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S") + (f"-{index:02d}" if index else "")
+    return _WORKSPACE_ROOT / f"wiki-runs/{stamp}"
+
+
+async def main() -> None:
+    global CONTEXT_CHAR_BUDGET, KEEP_RECENT_MESSAGES
+
+    parser = argparse.ArgumentParser(description="LLM-wiki ingestion via LangGraph + OpenViking (no gateway)")
+    parser.add_argument("--from", dest="from_uri", required=True, help="Source viking:// URI")
+    parser.add_argument("--to", dest="to_uri", required=True, help="Target viking:// URI for the wiki")
+    parser.add_argument("--skill", dest="skill_uri", default="", help="Skill package viking:// URI to package into context")
+    parser.add_argument("--reason", default="", help="Why this wiki is being compiled")
+    parser.add_argument("--model", default=os.getenv("WIKI_MODEL", "glm-4.7"))
+    parser.add_argument("--temperature", type=float, default=0.3)
+    parser.add_argument("--max-iterations", type=int, default=40)
+    parser.add_argument("--max-files", type=int, default=300)
+    parser.add_argument("--max-total-mb", type=float, default=64.0)
+    parser.add_argument("--max-file-kb", type=float, default=512.0)
+    parser.add_argument("--timeout", type=float, default=900.0, help="HTTP client timeout for OpenViking calls (batch_write waits server-side)")
+    parser.add_argument("--materialize-only", action="store_true", help="Materialize sources/skill then exit")
+    parser.add_argument("--per-source", action="store_true",
+                        help="Run once per child directory of --from, skipping already-compiled dirs (no LLM calls for unchanged sources)")
+    parser.add_argument("--keep-recent", type=int, default=8,
+                        help="Agent turns re-sent verbatim after history compaction")
+    parser.add_argument("--context-char-budget", type=int, default=1_200_000,
+                        help="Approximate characters (~4 chars/token) allowed in one LLM call after compaction")
+    args = parser.parse_args()
+
+    if not _OPENVIKING_KEY:
+        raise SystemExit("OPENVIKING_API_KEY is not set")
+    if args.per_source and args.materialize_only:
+        print("note: --materialize-only ignores --per-source")
+    CONTEXT_CHAR_BUDGET = args.context_char_budget
+    KEEP_RECENT_MESSAGES = args.keep_recent
+
+    if args.per_source and not args.materialize_only:
+        await run_per_source(args)
+        return
+
+    OV = AsyncHTTPClient(url=os.getenv("OPENVIKING_URL"), api_key=_OPENVIKING_KEY, timeout=args.timeout)
+    await OV.initialize()
+    try:
+        run_dir = _new_run_dir()
+        await ingest_once(args, run_dir=run_dir, ov=OV)
+    finally:
+        await OV.close()
 
 
 if __name__ == "__main__":
