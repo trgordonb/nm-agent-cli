@@ -16,11 +16,15 @@ from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from tools import tools
 from nm_memory_layer import (
+    DEFAULT_NUDGE_INTERVAL,
     MEMORY_CHAR_LIMIT,
+    NudgePolicy,
     PromptMemory,
     SessionStore,
+    build_nudge_prompt,
     create_memory_manage_tool,
     create_session_search_tool,
+    flatten_transcript,
 )
 
 load_dotenv()
@@ -109,6 +113,8 @@ session_search_tool = create_session_search_tool(store)
 
 memory = PromptMemory()
 memory_manage_tool = create_memory_manage_tool(memory)
+
+nudge_policy = NudgePolicy(interval=int(os.getenv("NUDGE_INTERVAL", str(DEFAULT_NUDGE_INTERVAL))))
 
 _FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
 
@@ -278,6 +284,52 @@ def build_agent(all_tools: list, memory_block: str = "") -> Any:
     app = workflow.compile()
     return app
 
+# --- Periodic nudge: the learning loop's curation step (Hermes-style) ---
+
+async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str:
+    """Run one internal curation review over a completed turn (no user input).
+
+    The nudge model sees the turn as a flattened transcript and may call
+    memory_manage several times; its writes take effect from the next session.
+    Nudge activity is deliberately NOT written to the session archive.
+    """
+    if not recent_messages:
+        return "No memory updates."
+    bound = nudge_model if nudge_model is not None else model.bind_tools([memory_manage_tool])
+    convo = [
+        SystemMessage(content=build_nudge_prompt(chars_used=memory.total_chars(), char_budget=MEMORY_CHAR_LIMIT)),
+        SystemMessage(content=f"Current memory contents:\n{memory.load() or '(empty)'}"),
+        HumanMessage(
+            content=(
+                "RECENT CONVERSATION TURN:\n\n"
+                f"{flatten_transcript(recent_messages)}\n\n"
+                "Review it now and persist anything that clears the bar."
+            )
+        ),
+    ]
+    for _ in range(max_iters):
+        response = await bound.ainvoke(convo)
+        if not getattr(response, "tool_calls", None):
+            return (response.content or "No memory updates.").strip()[:200] or "No memory updates."
+        convo.append(response)
+        for call in response.tool_calls:
+            if call["name"] == "memory_manage":
+                result = memory_manage_tool.invoke(dict(call["args"]))
+            else:
+                result = f"Rejected: unknown tool {call['name']!r} during nudge"
+            convo.append(ToolMessage(content=result, tool_call_id=call.get("id") or "nudge"))
+    return "Nudge reached its tool-call limit."
+
+
+async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_model=None) -> str | None:
+    """Post-turn bookkeeping: count the turn and run the nudge when due."""
+    nudge_policy.record_turn(session_id)
+    if not nudge_policy.should_nudge(session_id):
+        return None
+    nudge_policy.mark_nudged(session_id)
+    return await run_memory_nudge(new_messages, nudge_model=nudge_model)
+
+
 # CLI interface
 async def run_cli(resume_session_id: str | None = None):
     global session_id
@@ -353,6 +405,13 @@ async def run_cli(resume_session_id: str | None = None):
                         logging.debug(f"Recorded turn {turn} ({len(new_messages)} messages)")
                     except Exception as record_exc:
                         logging.warning(f"Session record failed: {str(record_exc)[:200]}")
+                    # Periodic nudge: agent-curated memory review, no user input
+                    try:
+                        summary = await maybe_nudge(session_id, new_messages)
+                        if summary:
+                            print(f"\n[memory nudge] {summary}")
+                    except Exception as nudge_exc:
+                        logging.warning(f"Memory nudge failed: {str(nudge_exc)[:200]}")
 
             except KeyboardInterrupt:
                 print("\n\nInterrupted. Type 'quit' to exit.")

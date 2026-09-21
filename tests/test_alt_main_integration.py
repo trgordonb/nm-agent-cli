@@ -6,6 +6,7 @@ called in these tests — only graph construction, tool binding, and the
 memory-layer round-trips.
 """
 
+import asyncio
 import importlib.util
 import os
 import tempfile
@@ -71,6 +72,88 @@ class TestMemoryWiring:
             {"operation": "remove", "target": "memory", "old_content": "E2E wiring line"}
         )
         assert result.startswith("OK:")
+
+    def test_nudge_policy_default_interval(self, alt):
+        assert alt.nudge_policy.interval == 5  # DEFAULT_NUDGE_INTERVAL
+
+    def test_maybe_nudge_silent_before_interval(self, alt):
+        alt.nudge_policy.mark_nudged("test-sid")
+        alt.nudge_policy.interval = 3
+        for _ in range(2):
+            result = asyncio.run(
+                alt.maybe_nudge("test-sid", [HumanMessage(content="hi"), AIMessage(content="hello")])
+            )
+            assert result is None
+
+    def test_nudge_runs_at_interval_and_writes_memory(self, alt):
+        class FakeNudgeModel:
+            def __init__(self):
+                self.calls = []
+
+            async def ainvoke(self, messages):
+                self.calls.append(messages)
+                if len(self.calls) == 1:
+                    return AIMessage(
+                        content="",
+                        tool_calls=[{
+                            "name": "memory_manage",
+                            "args": {"operation": "add", "target": "memory", "content": "nudge-written entry"},
+                            "id": "n1",
+                        }],
+                    )
+                return AIMessage(content="Saved 1 entry to MEMORY.md.")
+
+        alt.nudge_policy.mark_nudged("test-sid")
+        alt.nudge_policy.interval = 1
+        fake = FakeNudgeModel()
+        summary = asyncio.run(
+            alt.maybe_nudge(
+                "test-sid",
+                [HumanMessage(content="Note: reports live in reports/YYYY/qN.md"), AIMessage(content="Noted.")],
+                nudge_model=fake,
+            )
+        )
+        assert summary == "Saved 1 entry to MEMORY.md."
+        assert "nudge-written entry" in alt.memory._read("memory")
+        # Nudge must not leave tool-call artifacts in memory
+        alt.memory_manage_tool.invoke(
+            {"operation": "remove", "target": "memory", "old_content": "nudge-written entry"}
+        )
+
+    def test_nudge_without_worthwhile_content_stays_silent(self, alt):
+        class SilentNudgeModel:
+            async def ainvoke(self, messages):
+                return AIMessage(content="No memory updates.")
+
+        alt.nudge_policy.mark_nudged("test-sid")
+        alt.nudge_policy.interval = 1
+        summary = asyncio.run(
+            alt.maybe_nudge("test-sid", [HumanMessage(content="what is 2+2"), AIMessage(content="4")], nudge_model=SilentNudgeModel())
+        )
+        assert summary == "No memory updates."
+
+    def test_nudge_never_touches_session_archive(self, alt):
+        class WritingNudgeModel:
+            async def ainvoke(self, messages):
+                return AIMessage(content="No memory updates.")
+
+        before = len(alt.store.load_session(alt.session_id))
+        alt.nudge_policy.mark_nudged("test-sid")
+        alt.nudge_policy.interval = 1
+        asyncio.run(
+            alt.maybe_nudge("test-sid", [HumanMessage(content="ephemeral nudge probe"), AIMessage(content="ok")], nudge_model=WritingNudgeModel())
+        )
+        assert len(alt.store.load_session(alt.session_id)) == before
+
+    def test_memory_manage_end_to_end_through_bound_tool_repeatable(self, alt):
+        """Guard against fixture-order coupling: the tool still works after nudge tests."""
+        result = alt.memory_manage_tool.invoke(
+            {"operation": "add", "target": "user", "content": "post-nudge probe"}
+        )
+        assert result.startswith("OK:")
+        alt.memory_manage_tool.invoke(
+            {"operation": "remove", "target": "user", "old_content": "post-nudge probe"}
+        )
 
     def test_session_store_roundtrip_through_module(self, alt):
         sid = alt.session_id

@@ -2,6 +2,20 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-21 — branch `memory-layer` — Phase 3: periodic nudge (learning loop)
+
+Third increment: the agent now curates its own memory without user input.
+
+- `alt-main.py`:
+  - `NudgePolicy` (from `nm_memory_layer`, interval from `NUDGE_INTERVAL` env, default 5) counts completed turns per session.
+  - `run_memory_nudge`: internal LLM call after every Nth turn — the turn is flattened to plain text and reviewed by the main model with ONLY `memory_manage` bound (max 3 tool-loop iterations). Writes go to MEMORY.md/USER.md and take effect next session; nudge activity is never archived to `sessions.db`.
+  - `maybe_nudge` handles policy bookkeeping; run_cli prints a one-line `[memory nudge] <summary>` when it fires; failures are logged, never fatal.
+- The current prompt-memory block is still loaded once per session — nudge writes do NOT hot-reload the system prompt (Hermes next-session rule preserved).
+
+### Verified
+
+- Trigger logic (silent before interval, fires at interval, resets after) unit-tested in nm-memory-layer; integration tests here use a fake nudge model: nudge writes memory at interval, stays silent when nothing clears the bar, never touches the session archive, and interval is configurable.
+
 ## 2026-09-21 — branch `memory-layer` — Phase 2: always-on prompt memory
 
 Second increment of the Hermes-style memory cutover, built in `nm-memory-layer` and consumed here.
