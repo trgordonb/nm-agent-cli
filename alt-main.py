@@ -15,7 +15,13 @@ from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from tools import tools
-from nm_memory_layer import SessionStore, create_session_search_tool
+from nm_memory_layer import (
+    MEMORY_CHAR_LIMIT,
+    PromptMemory,
+    SessionStore,
+    create_memory_manage_tool,
+    create_session_search_tool,
+)
 
 load_dotenv()
 
@@ -101,6 +107,9 @@ session_id = str(uuid.uuid4())
 store = SessionStore()
 session_search_tool = create_session_search_tool(store)
 
+memory = PromptMemory()
+memory_manage_tool = create_memory_manage_tool(memory)
+
 _FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
 
 _MCP_KEEP_TOOLS = frozenset({
@@ -150,7 +159,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
-def build_agent(all_tools: list) -> Any:
+def build_agent(all_tools: list, memory_block: str = "") -> Any:
     # Create tool node
     tool_node = ToolNode(all_tools)
     model_with_tools = model.bind_tools(all_tools)
@@ -204,13 +213,22 @@ def build_agent(all_tools: list) -> Any:
         system_prompt = (
             "You are an adaptable AI agent.\n"
             "\n"
-            "SESSION MEMORY:\n"
-            "session_search queries your archived past sessions (episodic memory). "
-            "Call it BEFORE redoing work when the user's request may relate to something "
-            "from a previous conversation — prior decisions, findings, errors and their "
-            "fixes, or procedures you already worked out. It returns short excerpts with "
-            "session ids and turn numbers, not full transcripts, so it is cheap to consult.\n"
+            "SESSION MEMORY (episodic, on-demand):\n"
+            "session_search queries your archived past sessions. Call it BEFORE redoing work "
+            "when the user's request may relate to something from a previous conversation — "
+            "prior decisions, findings, errors and their fixes, or procedures you already "
+            "worked out. It returns short excerpts, not full transcripts, so it is cheap to consult.\n"
+            "\n"
+            "PROMPT MEMORY (always-on, self-curated):\n"
+            "memory_manage edits your MEMORY.md (facts/decisions relevant to EVERY future "
+            "session) and USER.md (who the user is, preferences, working style). Combined "
+            f"budget: {MEMORY_CHAR_LIMIT} chars — keep entries terse, consolidate instead of accumulating. "
+            "Do NOT store topic-specific findings there; leave those to the session archive. "
+            "Memory edits take effect from the NEXT session, never mid-conversation.\n"
         )
+
+        if memory_block:
+            system_prompt = f"{system_prompt}\n{memory_block}\n"
 
         # Inject system prompt into messages
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"]) # type: ignore
@@ -267,13 +285,17 @@ async def run_cli(resume_session_id: str | None = None):
     #mcp_tools = await _load_mcp_tools()
     #if mcp_tools:
     #    print(f"Connected to Finance Toolkit MCP ({len(mcp_tools)} tools)")
-    # Drop OpenViking tools (shared tools.py) — the local store replaces them.
-    all_tools = [t for t in tools if not t.name.startswith("viking_")] + [session_search_tool]
-    app = build_agent(all_tools)
+    # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
+    all_tools = [t for t in tools if not t.name.startswith("viking_")] + [session_search_tool, memory_manage_tool]
+    # Load the always-on memory block once per session: stable prompt prefix
+    # (provider prompt-cache friendly) and edits apply from the next session.
+    memory_block = memory.load()
+    app = build_agent(all_tools, memory_block)
 
-    print("LangGraph Agent CLI (local SQLite/FTS5 session store)")
+    print("LangGraph Agent CLI (nm-memory-layer: session store + prompt memory)")
     print("=" * 50)
     print(f"\nHello {user}\n")
+    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars\n")
     print(f"Session ID: {session_id} (pass --session-id to resume)\n")
     messages = []
 

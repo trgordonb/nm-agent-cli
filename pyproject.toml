@@ -29,3 +29,8 @@ dependencies = [
 
 [tool.uv.sources]
 nm-memory-layer = { path = "../nm-memory-layer", editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

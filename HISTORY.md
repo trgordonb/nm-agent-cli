@@ -2,6 +2,21 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-21 — branch `memory-layer` — Phase 2: always-on prompt memory
+
+Second increment of the Hermes-style memory cutover, built in `nm-memory-layer` and consumed here.
+
+- `alt-main.py`:
+  - Binds the new `memory_manage` tool alongside `session_search` (both from `nm_memory_layer`).
+  - `PromptMemory` loads `./memories/MEMORY.md` + `USER.md` **once per session** and injects the `<agent_memory>` block into the system prompt — stable prefix for prompt caching, and per the Hermes rule edits take effect from the next session.
+  - System prompt now teaches the two-layer boundary: permanent knowledge → `memory_manage`; topic-specific history → `session_search`.
+  - CLI banner shows memory budget usage (`N/3575 chars`).
+- `memories/` now holds the always-on files (`MEMORY.md`, `USER.md` — both empty at start; `AGENTS.md` is unrelated and untouched).
+
+### Verified
+
+- `memory_manage` add/replace/remove round-trips through the bound tool; budget rejection returns a non-fatal "Rejected:" message (deliberately not "Error:" — `should_continue` ends the turn on "Error:" results); empty memory → no prompt block; session-store behavior unchanged.
+
 ## 2026-09-21 — branch `memory-layer` — Phase 1: local SQLite/FTS5 session store
 
 Goal: replace the OpenViking server-based memory layer with a Hermes-Agent-style memory architecture, built step by step. The memory layer was then extracted to the standalone repo `~/projects/nm-memory-layer` (package `nm_memory_layer`) and is imported here as an editable path dependency.

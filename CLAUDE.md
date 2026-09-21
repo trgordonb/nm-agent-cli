@@ -9,13 +9,14 @@ LangGraph agent (financial research assistant: EDGAR, market data, web search). 
 
 The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as an **editable path dependency** via `[tool.uv.sources]` in `pyproject.toml`. Edit memory-layer code there, not here — changes apply immediately without reinstalling.
 
-Current phase: **Phase 1 — SQLite + FTS5 episodic session store** (OpenViking recorder/session archives removed from `alt-main.py`).
+Current phase: **Phases 1–2 — SQLite + FTS5 episodic session store + always-on prompt memory** (OpenViking recorder/session archives and per-turn context assembly removed from `alt-main.py`).
 
 ### How alt-main.py persists sessions
 
 - `SessionStore` from `nm_memory_layer` writes every completed turn to `./sessions.db` (WAL mode; override with `SESSION_DB_PATH`).
 - Resume with `--session-id <id>`; history is rebuilt from the local store including tool-call pairs.
 - The agent gets a `session_search` tool for deliberate retrieval of past-session context (replaces OpenViking's per-turn context assembly).
+- The agent also gets `memory_manage` for the always-on layer: `PromptMemory` loads `./memories/MEMORY.md` + `USER.md` once per session into the system prompt (3,575-char combined budget; edits take effect next session).
 - `tools.py` is shared with `main.py`, so OpenViking tool bindings are still created at import; `alt-main.py` filters them out (`viking_` prefix) when binding tools.
 
 ### Remaining OpenViking usage in alt-main.py
@@ -29,6 +30,7 @@ uv run python alt-main.py                 # run agent with local memory (new ses
 uv run python alt-main.py --session-id …  # resume a stored session
 uv run python main.py                     # original OpenViking agent
 uv sync                                   # install deps (incl. editable nm-memory-layer)
+uv run pytest tests/ -q                   # integration tests for alt-main wiring (no LLM calls)
 ```
 
 ## Roadmap
