@@ -2,6 +2,21 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-21 — branch `memory-layer` — Phase 4: skills layer (procedural memory)
+
+Fourth increment: local skills replace the last OpenViking capability (skill abstracts + `viking_read`) with zero server dependency.
+
+- `alt-main.py`:
+  - Binds `skill_manage` + `load_skill` (from `nm_memory_layer`) — total toolset is now: local file/web tools + session_search + memory_manage + skill_manage + load_skill.
+  - `./skills/` (the pre-existing edgar / financial-toolkits / tradedesk-dukascopy skills, already agentskills.io-style) is indexed once per session: names + descriptions only, injected as `<skills_index>`; full SKILL.md enters context only via `load_skill` — progressive disclosure keeps token cost flat as skills accumulate.
+  - System prompt teaches: matching skill → `load_skill` FIRST, then follow it; curate with `skill_manage`, prefer patch over edit.
+  - Nudge can now also create/patch skills (`skill_manage` bound alongside `memory_manage`); it sees the current skills index to avoid duplicates.
+- CLI banner shows skill count; `SKILLS_DIR` env override supported (default `./skills`).
+
+### Verified
+
+- 24 new unit tests in nm-memory-layer (CRUD, patch targeting, edit-keeps-frontmatter, traversal guards, index/content separation, tool dispatch); 6 new integration tests here (skill tools bound, index injection without body leakage, skill_manage/load_skill round-trip, nudge creating skills, nudge rejecting non-memory tools).
+
 ## 2026-09-21 — branch `memory-layer` — Phase 3: periodic nudge (learning loop)
 
 Third increment: the agent now curates its own memory without user input.

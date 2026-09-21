@@ -21,9 +21,12 @@ from nm_memory_layer import (
     NudgePolicy,
     PromptMemory,
     SessionStore,
+    SkillLibrary,
     build_nudge_prompt,
+    create_load_skill_tool,
     create_memory_manage_tool,
     create_session_search_tool,
+    create_skill_manage_tool,
     flatten_transcript,
 )
 
@@ -116,6 +119,10 @@ memory_manage_tool = create_memory_manage_tool(memory)
 
 nudge_policy = NudgePolicy(interval=int(os.getenv("NUDGE_INTERVAL", str(DEFAULT_NUDGE_INTERVAL))))
 
+skill_library = SkillLibrary()
+skill_manage_tool = create_skill_manage_tool(skill_library)
+load_skill_tool = create_load_skill_tool(skill_library)
+
 _FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
 
 _MCP_KEEP_TOOLS = frozenset({
@@ -165,7 +172,7 @@ class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
 
 
-def build_agent(all_tools: list, memory_block: str = "") -> Any:
+def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") -> Any:
     # Create tool node
     tool_node = ToolNode(all_tools)
     model_with_tools = model.bind_tools(all_tools)
@@ -231,10 +238,19 @@ def build_agent(all_tools: list, memory_block: str = "") -> Any:
             f"budget: {MEMORY_CHAR_LIMIT} chars — keep entries terse, consolidate instead of accumulating. "
             "Do NOT store topic-specific findings there; leave those to the session archive. "
             "Memory edits take effect from the NEXT session, never mid-conversation.\n"
+            "\n"
+            "SKILLS (procedural memory, on demand):\n"
+            "The skills index below lists names + descriptions ONLY. If a listed skill "
+            "matches the task, call load_skill(name) FIRST and follow its loaded "
+            "instructions before falling back to generic approaches. You can curate "
+            "skills with skill_manage (create/patch/edit/delete/write_file/remove_file); "
+            "PREFER patch for updates — targeted and safe, unlike full rewrites.\n"
         )
 
         if memory_block:
             system_prompt = f"{system_prompt}\n{memory_block}\n"
+        if skill_index:
+            system_prompt = f"{system_prompt}\n{skill_index}\n"
 
         # Inject system prompt into messages
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"]) # type: ignore
@@ -295,10 +311,11 @@ async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None,
     """
     if not recent_messages:
         return "No memory updates."
-    bound = nudge_model if nudge_model is not None else model.bind_tools([memory_manage_tool])
+    bound = nudge_model if nudge_model is not None else model.bind_tools([memory_manage_tool, skill_manage_tool])
     convo = [
         SystemMessage(content=build_nudge_prompt(chars_used=memory.total_chars(), char_budget=MEMORY_CHAR_LIMIT)),
         SystemMessage(content=f"Current memory contents:\n{memory.load() or '(empty)'}"),
+        SystemMessage(content=f"Current skills index:\n{skill_library.render_index() or '(none)'}"),
         HumanMessage(
             content=(
                 "RECENT CONVERSATION TURN:\n\n"
@@ -315,19 +332,21 @@ async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None,
         for call in response.tool_calls:
             if call["name"] == "memory_manage":
                 result = memory_manage_tool.invoke(dict(call["args"]))
+            elif call["name"] == "skill_manage":
+                result = skill_manage_tool.invoke(dict(call["args"]))
             else:
                 result = f"Rejected: unknown tool {call['name']!r} during nudge"
             convo.append(ToolMessage(content=result, tool_call_id=call.get("id") or "nudge"))
     return "Nudge reached its tool-call limit."
 
 
-async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_model=None) -> str | None:
+async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str | None:
     """Post-turn bookkeeping: count the turn and run the nudge when due."""
     nudge_policy.record_turn(session_id)
     if not nudge_policy.should_nudge(session_id):
         return None
     nudge_policy.mark_nudged(session_id)
-    return await run_memory_nudge(new_messages, nudge_model=nudge_model)
+    return await run_memory_nudge(new_messages, nudge_model=nudge_model, max_iters=max_iters)
 
 
 # CLI interface
@@ -338,16 +357,23 @@ async def run_cli(resume_session_id: str | None = None):
     #if mcp_tools:
     #    print(f"Connected to Finance Toolkit MCP ({len(mcp_tools)} tools)")
     # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
-    all_tools = [t for t in tools if not t.name.startswith("viking_")] + [session_search_tool, memory_manage_tool]
-    # Load the always-on memory block once per session: stable prompt prefix
-    # (provider prompt-cache friendly) and edits apply from the next session.
+    all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
+        session_search_tool,
+        memory_manage_tool,
+        skill_manage_tool,
+        load_skill_tool,
+    ]
+    # Load the always-on memory block and the skills index once per session:
+    # stable prompt prefix (provider prompt-cache friendly); edits and new
+    # skills apply from the next session.
     memory_block = memory.load()
-    app = build_agent(all_tools, memory_block)
+    skill_index = skill_library.render_index()
+    app = build_agent(all_tools, memory_block, skill_index)
 
-    print("LangGraph Agent CLI (nm-memory-layer: session store + prompt memory)")
+    print("LangGraph Agent CLI (nm-memory-layer: sessions + prompt memory + skills)")
     print("=" * 50)
     print(f"\nHello {user}\n")
-    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars\n")
+    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}\n")
     print(f"Session ID: {session_id} (pass --session-id to resume)\n")
     messages = []
 

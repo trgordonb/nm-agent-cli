@@ -9,7 +9,7 @@ LangGraph agent (financial research assistant: EDGAR, market data, web search). 
 
 The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as an **editable path dependency** via `[tool.uv.sources]` in `pyproject.toml`. Edit memory-layer code there, not here — changes apply immediately without reinstalling.
 
-Current phase: **Phases 1–3 — session store + prompt memory + periodic nudge (the learning loop's curation step)**. OpenViking is fully out of the `alt-main.py` path.
+Current phase: **Phases 1–4 — session store + prompt memory + periodic nudge + skills layer**. OpenViking is fully out of the `alt-main.py` path.
 
 ### How alt-main.py persists sessions
 
@@ -17,7 +17,8 @@ Current phase: **Phases 1–3 — session store + prompt memory + periodic nudge
 - Resume with `--session-id <id>`; history is rebuilt from the local store including tool-call pairs.
 - The agent gets a `session_search` tool for deliberate retrieval of past-session context (replaces OpenViking's per-turn context assembly).
 - The agent also gets `memory_manage` for the always-on layer: `PromptMemory` loads `./memories/MEMORY.md` + `USER.md` once per session into the system prompt (3,575-char combined budget; edits take effect next session).
-- After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory via `memory_manage` — no user input, and nudge activity is never archived to `sessions.db`.
+- The agent gets `skill_manage` + `load_skill` for procedural memory: the `./skills/` index (names + descriptions only) is injected once per session; full SKILL.md loads on demand — replacing OpenViking's `<skill>` abstract / `viking_read` flow with zero server dependency.
+- After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory (`memory_manage`) or create/patch skills (`skill_manage`) — no user input, and nudge activity is never archived to `sessions.db`.
 - `tools.py` is shared with `main.py`, so OpenViking tool bindings are still created at import; `alt-main.py` filters them out (`viking_` prefix) when binding tools.
 
 ### Remaining OpenViking usage in alt-main.py
