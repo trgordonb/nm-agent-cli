@@ -19,6 +19,7 @@ Current phase: **Phases 1–4 — session store + prompt memory + periodic nudge
 - The agent also gets `memory_manage` for the always-on layer: `PromptMemory` loads `./memories/MEMORY.md` + `USER.md` once per session into the system prompt (3,575-char combined budget; edits take effect next session).
 - The agent gets `skill_manage` + `load_skill` for procedural memory: the `./skills/` index (names + descriptions only) is injected once per session; full SKILL.md loads on demand — replacing OpenViking's `<skill>` abstract / `viking_read` flow with zero server dependency.
 - After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory (`memory_manage`) or create/patch skills (`skill_manage`) — no user input, and nudge activity is never archived to `sessions.db`.
+- `session_search` can optionally condense its FTS5 excerpts through a secondary LLM (OpenRouter) before they enter context: `SEARCH_SUMMARIZER_ENABLED=true` + `OPENROUTER_MODEL` in `.env` turn it on; disabled or failing → raw excerpts (graceful fallback). The CLI banner shows which mode is active; summarized results carry a `[session_search: condensed by ...]` header.
 - `tools.py` is shared with `main.py`, so OpenViking tool bindings are still created at import; `alt-main.py` filters them out (`viking_` prefix) when binding tools.
 
 ### Remaining OpenViking usage in alt-main.py

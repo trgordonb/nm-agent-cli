@@ -25,6 +25,7 @@ from nm_memory_layer import (
     build_nudge_prompt,
     create_load_skill_tool,
     create_memory_manage_tool,
+    create_openrouter_summarizer,
     create_session_search_tool,
     create_skill_manage_tool,
     flatten_transcript,
@@ -152,7 +153,8 @@ user = os.getenv("OPENVIKING_USER", "gordon")
 session_id = str(uuid.uuid4())
 
 store = SessionStore()
-session_search_tool = create_session_search_tool(store)
+search_summarizer = create_openrouter_summarizer()
+session_search_tool = create_session_search_tool(store, summarizer=search_summarizer)
 
 memory = PromptMemory()
 memory_manage_tool = create_memory_manage_tool(memory)
@@ -413,7 +415,8 @@ async def run_cli(resume_session_id: str | None = None):
     print("LangGraph Agent CLI (nm-memory-layer: sessions + prompt memory + skills)")
     print("=" * 50)
     print(f"\nHello {user}\n")
-    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}\n")
+    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}")
+    print(f"Search summarizer: {search_summarizer.label if search_summarizer else 'disabled (raw excerpts)'}\n")
     print(f"Session ID: {session_id} (pass --session-id to resume)\n")
     messages = []
 

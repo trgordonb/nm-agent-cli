@@ -2,6 +2,12 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-21 — branch `memory-layer` — search summarization via OpenRouter (env-toggled)
+
+- `alt-main.py` builds the optional secondary-LLM summarizer (`create_openrouter_summarizer()`) and passes it to `create_session_search_tool`; the CLI banner shows the active mode (`openrouter/<model>` vs `disabled (raw excerpts)`).
+- `.env` gains `SEARCH_SUMMARIZER_ENABLED` (toggle for A/B comparison) and `OPENROUTER_MODEL` (placeholder — must be set to a valid OpenRouter model id for the feature to activate).
+- Behavior when enabled: `session_search` fetches ≥8 excerpts, condenses them via one OpenRouter call, and returns a summary with a `[session_search: condensed by ... in <ms>ms from <n> raw excerpts]` header; summarizer failure/timeout → silent fallback to raw excerpts. Latency is also logged per call at INFO.
+
 ## 2026-09-21 — branch `memory-layer` — Phase 4: skills layer (procedural memory)
 
 Fourth increment: local skills replace the last OpenViking capability (skill abstracts + `viking_read`) with zero server dependency.

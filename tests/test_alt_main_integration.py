@@ -21,14 +21,24 @@ ALT_MAIN = REPO_ROOT / "alt-main.py"
 
 
 @pytest.fixture(scope="module")
-def alt(tmp_path_factory):
+def alt(tmp_path_factory, monkeypatch_module_scope=None):
     tmp = tmp_path_factory.mktemp("altmain")
     os.environ["SESSION_DB_PATH"] = str(tmp / "sessions.db")
     os.environ["MEMORY_DIR"] = str(tmp / "memories")
     os.environ["SKILLS_DIR"] = str(tmp / "skills")
-    spec = importlib.util.spec_from_file_location("altmain_under_test", ALT_MAIN)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Hermetic tests: the user's .env may enable the OpenRouter search
+    # summarizer (load_dotenv(override=True) wins over process env), so force
+    # the factory off while alt-main is imported. Real .env config is not
+    # touched; live summarizer behavior is covered by nm-memory-layer tests.
+    import nm_memory_layer
+    original_factory = nm_memory_layer.create_openrouter_summarizer
+    nm_memory_layer.create_openrouter_summarizer = lambda: None
+    try:
+        spec = importlib.util.spec_from_file_location("altmain_under_test", ALT_MAIN)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    finally:
+        nm_memory_layer.create_openrouter_summarizer = original_factory
     yield module
     module.store.close()
 
@@ -46,6 +56,11 @@ class TestToolBinding:
     def test_local_memory_tools_are_bound(self, alt):
         assert alt.session_search_tool.name == "session_search"
         assert alt.memory_manage_tool.name == "memory_manage"
+
+    def test_search_summarizer_forced_off_in_tests(self, alt):
+        """Tests are hermetic: the summarizer factory is patched to None so no
+        OpenRouter calls happen regardless of the user's .env toggles."""
+        assert alt.search_summarizer is None
 
     def test_skill_tools_are_bound(self, alt):
         assert alt.skill_manage_tool.name == "skill_manage"
