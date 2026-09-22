@@ -1,17 +1,14 @@
 # CLAUDE.md — langgraph-demo
 
-LangGraph agent (financial research assistant: EDGAR, market data, web search). Two parallel implementations live in this repo:
-
-- `main.py` — original agent using **OpenViking** server as its memory layer (do not modify while `memory-layer` branch is active)
-- `alt-main.py` — the **Hermes-style memory** implementation, on branch `memory-layer`
+LangGraph agent (financial research assistant: EDGAR, market data, web search) running on the **Hermes-style memory layer** (`nm-memory-layer`, installed from GitHub as a regular dependency).
 
 ## Memory layer (branch `memory-layer`)
 
 The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as an **editable path dependency** via `[tool.uv.sources]` in `pyproject.toml`. Edit memory-layer code there, not here — changes apply immediately without reinstalling.
 
-Current phase: **All five phases complete — session store, prompt memory, nudge, skills, search summarization, context compression.** OpenViking is fully out of the `alt-main.py` path.
+Current phase: **All five phases complete — session store, prompt memory, nudge, skills, search summarization, context compression.** The OpenViking version (`main.py` pre-rename + `llm_wiki_ingest.py`) was deleted on 2026-09-21; `alt-main.py` became `main.py` and is the single implementation.
 
-### How alt-main.py persists sessions
+### How main.py persists sessions
 
 - `SessionStore` from `nm_memory_layer` writes every completed turn to `./sessions.db` (WAL mode; override with `SESSION_DB_PATH`).
 - Resume with `--session-id <id>`; history is rebuilt from the local store including tool-call pairs.
@@ -21,20 +18,19 @@ Current phase: **All five phases complete — session store, prompt memory, nudg
 - After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory (`memory_manage`) or create/patch skills (`skill_manage`) — no user input, and nudge activity is never archived to `sessions.db`.
 - `session_search` can optionally condense its FTS5 excerpts through a secondary LLM (OpenRouter) before they enter context: `SEARCH_SUMMARIZER_ENABLED=true` + `OPENROUTER_MODEL` in `.env` turn it on; disabled or failing → raw excerpts (graceful fallback). The CLI banner shows which mode is active; summarized results carry a `[session_search: condensed by ...]` header.
 - Before each turn, if `COMPRESSION_ENABLED=true` and the history exceeds `COMPRESSION_TOKEN_THRESHOLD` (default 24000), middle turns are summarized by the OpenRouter model into a `<conversation_summary>` SystemMessage; the first + recent `COMPRESSION_KEEP_RECENT_TURNS` turns stay verbatim; lineage is recorded to the `compressions` table in `sessions.db`. Failure → history untouched.
-- `tools.py` is shared with `main.py`, so OpenViking tool bindings are still created at import; `alt-main.py` filters them out (`viking_` prefix) when binding tools.
+- `tools.py` still imports/creates OpenViking tool bindings at import (`viking_` prefix); `main.py` filters them out when binding tools. Removing them from `tools.py` + `pyproject.toml` is the remaining cutover cleanup.
 
-### Remaining OpenViking usage in alt-main.py
+### Remaining OpenViking traces
 
-None, other than the shared `tools.py` import (filtered). `.env` still carries `OPENVIKING_*` vars for `main.py`.
+`tools.py` (viking tool bindings) and `.env` `OPENVIKING_*` vars are the only leftovers; both inert for `main.py`.
 
 ## Commands
 
 ```bash
-uv run python alt-main.py                 # run agent with local memory (new session)
-uv run python alt-main.py --session-id …  # resume a stored session
-uv run python main.py                     # original OpenViking agent
+uv run python main.py                     # run agent with local memory (new session)
+uv run python main.py --session-id …      # resume a stored session
 uv sync                                   # install deps (incl. editable nm-memory-layer)
-uv run pytest tests/ -q                   # integration tests for alt-main wiring (no LLM calls)
+uv run pytest tests/ -q                   # integration tests for main.py wiring (no LLM calls)
 ```
 
 ## Roadmap

@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache
 
 # Virtual environments
 .venv
@@ -13,8 +14,14 @@ wheels/
 
 workspace/
 token-use/
-skills/
 
 # Local session store
 sessions.db
 sessions.db-*
+
+# Agent state: folder structure tracked via .gitkeep; live content stays local-only
+skills/*
+!skills/.gitkeep
+
+# Memory files are tracked as empty placeholders; local agent-curated content
+# is hidden from git via skip-worktree (see CLAUDE.md).

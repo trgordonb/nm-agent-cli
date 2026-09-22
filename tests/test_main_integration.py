@@ -1,6 +1,6 @@
-"""Integration tests for alt-main.py wiring of the nm-memory-layer package.
+"""Integration tests for main.py wiring of the nm-memory-layer package.
 
-alt-main.py instantiates SessionStore and PromptMemory at import time, so the
+main.py instantiates SessionStore and PromptMemory at import time, so the
 env overrides must be set BEFORE the module is executed. The LLM is never
 called in these tests — only graph construction, tool binding, and the
 memory-layer round-trips.
@@ -17,18 +17,18 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from nm_memory_layer import NudgePolicy
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ALT_MAIN = REPO_ROOT / "alt-main.py"
+MAIN = REPO_ROOT / "main.py"
 
 
 @pytest.fixture(scope="module")
 def alt(tmp_path_factory):
-    tmp = tmp_path_factory.mktemp("altmain")
+    tmp = tmp_path_factory.mktemp("maintest")
     os.environ["SESSION_DB_PATH"] = str(tmp / "sessions.db")
     os.environ["MEMORY_DIR"] = str(tmp / "memories")
     os.environ["SKILLS_DIR"] = str(tmp / "skills")
     # Hermetic tests: the user's .env may enable the OpenRouter search
     # summarizer / context compressor (load_dotenv(override=True) wins over
-    # process env), so force both factories off while alt-main is imported.
+    # process env), so force both factories off while main.py is imported.
     # Real .env config is not touched; live behavior is covered by
     # nm-memory-layer tests.
     import nm_memory_layer
@@ -37,7 +37,7 @@ def alt(tmp_path_factory):
     nm_memory_layer.create_openrouter_summarizer = lambda: None
     nm_memory_layer.create_openrouter_compressor = lambda: None
     try:
-        spec = importlib.util.spec_from_file_location("altmain_under_test", ALT_MAIN)
+        spec = importlib.util.spec_from_file_location("main_under_test", MAIN)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
     finally:

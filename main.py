@@ -1,39 +1,58 @@
 import os
-import json
-import sys
 import time
 import argparse
 import asyncio
 import functools
 import logging
-import math
-import re
 import uuid
-import warnings
 
 from typing import TypedDict, Annotated, Sequence, Any
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
-from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_openai import ChatOpenAI
-import httpx
-from openviking_sdk import AsyncHTTPClient
-from langchain_openviking import OpenVikingCommitPolicy, OpenVikingPartialWriteError, OpenVikingSessionRecorder
-from langchain_openviking.history import OpenVikingChatMessageHistory
-from langchain_openviking.messages import OPENVIKING_CONTEXT_MARKER
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from tools import tools
+from nm_memory_layer import (
+    DEFAULT_NUDGE_INTERVAL,
+    MEMORY_CHAR_LIMIT,
+    NudgePolicy,
+    PromptMemory,
+    SessionStore,
+    SkillLibrary,
+    build_nudge_prompt,
+    create_load_skill_tool,
+    create_memory_manage_tool,
+    create_openrouter_compressor,
+    create_openrouter_summarizer,
+    create_session_search_tool,
+    create_skill_manage_tool,
+    flatten_transcript,
+)
 
-# Filter LangChain deprecation warnings from langchain-openviking library
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="langchain_openviking")
+# override=True: .env is the source of truth for this project. Without it,
+# dotenv will NOT replace variables already exported in the shell (e.g. an
+# OPENAI_BASE_URL exported in ~/.bashrc silently wins and redirects the LLM).
+load_dotenv(override=True)
 
-load_dotenv()
+# --- Logging -----------------------------------------------------------------
+# INFO shows: every LLM call attempt (model + base_url), retry decisions, and —
+# via the httpx logger — the actual request line of every HTTP call made by the
+# process (e.g. "HTTP Request: POST https://api.z.ai/api/paas/v4/chat/completions
+# HTTP/1.1 200 OK"), which is how we verify which endpoint is really hit.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,  # imported libs may pre-add root handlers, making plain basicConfig a no-op
+)
+logging.getLogger("httpx").setLevel(logging.INFO)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 _last_call_time = 0.0
-_MIN_INTERVAL = 4.0 
+_MIN_INTERVAL = 4.0
 
 # Initialize the LLM
 
@@ -44,6 +63,23 @@ model = ChatOpenAI(
     api_key=os.getenv("OPENAI_API_KEY",""), # type: ignore
     base_url=os.getenv("OPENAI_BASE_URL", "https://api.z.ai/api/paas/v4/")
 )
+
+
+def _endpoint_hint(fn) -> str:
+    """Describe which model/endpoint a wrapped LLM method points at."""
+    target = getattr(fn, "__self__", None)
+    if target is None:
+        return "target=?"
+    base_url = getattr(target, "openai_api_base", None) or getattr(target, "base_url", "")
+    model_name = getattr(target, "model_name", None) or getattr(target, "model", "")
+    return f"model={model_name} base_url={base_url}"
+
+
+def _error_hint(exc: Exception) -> str:
+    """Extract status + request URL from an SDK/httpx exception when present."""
+    url = getattr(getattr(exc, "request", None), "url", "")
+    status = getattr(exc, "status_code", "")
+    return f"{type(exc).__name__}{f' status={status}' if status != '' else ''}{f' url={url}' if url else ''}"
 
 def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
     """Wrap a method with manual rate limiting and retry logic for transient HTTP errors."""
@@ -61,6 +97,7 @@ def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
         last_exc = None
         for attempt in range(1, max_attempts + 1):
             try:
+                logging.info(f"LLM call (sync) attempt {attempt}/{max_attempts} [{_endpoint_hint(fn)}]")
                 _last_call_time = time.time()
                 return fn(*args, **kwargs)
             except Exception as e:
@@ -68,10 +105,12 @@ def _rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
                 if any(code in err_str for code in ("500", "502", "503", "504", "Connection", "Timeout", "429", "rate", "socket", "timeout")):
                     last_exc = e
                     wait = backoff ** attempt
-                    logging.warning(f"Retry {attempt}/{max_attempts} after {wait}s: {err_str[:200]}")
+                    logging.warning(f"LLM retry {attempt}/{max_attempts} after {wait}s: {_error_hint(e)}: {err_str[:200]}")
                     time.sleep(wait)
                 else:
+                    logging.error(f"LLM call failed (non-retryable) [{_endpoint_hint(fn)}]: {_error_hint(e)}: {err_str[:300]}")
                     raise
+        logging.error(f"LLM call failed after {max_attempts} attempts [{_endpoint_hint(fn)}]: {_error_hint(last_exc) if last_exc else ''}")
         raise last_exc # type: ignore
     return wrapper
 
@@ -91,6 +130,7 @@ def _async_rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
         last_exc = None
         for attempt in range(1, max_attempts + 1):
             try:
+                logging.info(f"LLM call (async) attempt {attempt}/{max_attempts} [{_endpoint_hint(fn)}]")
                 _last_call_time = time.time()
                 return await fn(*args, **kwargs)
             except Exception as e:
@@ -98,245 +138,35 @@ def _async_rate_limit_and_retry_wrapper(fn, max_attempts=5, backoff=2):
                 if any(code in err_str for code in ("500", "502", "503", "504", "Connection", "Timeout", "429", "rate", "socket", "timeout")):
                     last_exc = e
                     wait = backoff ** attempt
-                    logging.warning(f"Retry {attempt}/{max_attempts} after {wait}s: {err_str[:200]}")
+                    logging.warning(f"LLM retry {attempt}/{max_attempts} after {wait}s: {_error_hint(e)}: {err_str[:200]}")
                     await asyncio.sleep(wait)
                 else:
+                    logging.error(f"LLM call failed (non-retryable) [{_endpoint_hint(fn)}]: {_error_hint(e)}: {err_str[:300]}")
                     raise
+        logging.error(f"LLM call failed after {max_attempts} attempts [{_endpoint_hint(fn)}]: {_error_hint(last_exc) if last_exc else ''}")
         raise last_exc # type: ignore
     return wrapper
 
 object.__setattr__(model, "invoke", _rate_limit_and_retry_wrapper(model.invoke))
 object.__setattr__(model, "ainvoke", _async_rate_limit_and_retry_wrapper(model.ainvoke))
 
-ov_client = AsyncHTTPClient(url=os.getenv("OPENVIKING_URL"), api_key=os.getenv("OPENVIKING_API_KEY"))
-commit_policy = OpenVikingCommitPolicy(mode="pending_tokens", pending_token_threshold=4_000)
-recorder = OpenVikingSessionRecorder(async_client=ov_client, commit_policy=commit_policy)
-
 user = os.getenv("OPENVIKING_USER", "gordon")
 session_id = str(uuid.uuid4())
 
-_OPENVIKING_URL = (os.getenv("OPENVIKING_URL") or "http://localhost:1933").rstrip("/")
-_context_http = httpx.AsyncClient(timeout=180.0)
+store = SessionStore()
+search_summarizer = create_openrouter_summarizer()
+session_search_tool = create_session_search_tool(store, summarizer=search_summarizer)
 
-_CONTEXT_QUOTAS: dict[str, int] = {
-    "skills": 3,
-    "resources": 2,
-    "events": 0,
-    "entities": 0,
-    "preferences": 0,
-    "experiences": 2,
-}
+memory = PromptMemory()
+memory_manage_tool = create_memory_manage_tool(memory)
 
-_TRAJECTORY_DIR = "viking://user/gordon/memories/trajectories"
-_TRAJECTORY_LIMIT = 3
+nudge_policy = NudgePolicy(interval=int(os.getenv("NUDGE_INTERVAL", str(DEFAULT_NUDGE_INTERVAL))))
 
-_RESOURCE_MIN_RELEVANCE = float(os.getenv("OPENVIKING_RESOURCE_MIN_RELEVANCE", "0.55"))
-_CONTEXT_SCORE_FLOOR = float(os.getenv("OPENVIKING_CONTEXT_SCORE_FLOOR", "-8.0"))
+skill_library = SkillLibrary()
+skill_manage_tool = create_skill_manage_tool(skill_library)
+load_skill_tool = create_load_skill_tool(skill_library)
 
-_URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
-
-
-def _recall_query(text: str) -> str:
-    return _URL_RE.sub(" ", text).strip()
-
-
-def _context_part_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    category = entry.get("category") or ""
-    return {
-        "type": "context",
-        "uri": entry.get("uri") or "",
-        "context_type": {"skills": "skill", "resources": "resource"}.get(category, "memory"),
-        "abstract": str(entry.get("text") or "")[:500],
-    }
-
-
-def _logit_relevance(logit: float) -> float:
-    return 1.0 / (1.0 + math.exp(-logit))
-
-
-def _filter_context_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    kept: list[dict[str, Any]] = []
-    for entry in entries:
-        category = entry.get("category") or ""
-        if category == "resources":
-            relevance = _logit_relevance(float(entry.get("score") or 0.0))
-            if relevance < _RESOURCE_MIN_RELEVANCE:
-                logging.info(
-                    f"OpenViking context dropped low-relevance resource "
-                    f"{entry.get('uri')} (relevance={relevance:.2f})"
-                )
-                continue
-        kept.append(entry)
-    return kept
-
-
-_ENTRY_TAGS = {"skills": "skill", "resources": "resource"}
-_CONTEXT_ENVELOPE_RE = re.compile(r"</?(skill|resource|memory)(?=[\s/>])", re.IGNORECASE)
-
-
-def _xml_attr(value: str) -> str:
-    return value.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
-
-
-def _xml_body(text: str) -> str:
-    return _CONTEXT_ENVELOPE_RE.sub(r"<\\\1", text)
-
-
-def _render_context_entry(entry: dict[str, Any]) -> str:
-    category = entry.get("category") or ""
-    tag = _ENTRY_TAGS.get(category, "memory")
-    attrs = [
-        f'uri="{_xml_attr(str(entry.get("uri") or ""))}"',
-        f'score="{_logit_relevance(float(entry.get("score") or 0.0)):.3f}"',
-        f'detail="{_xml_attr(str(entry.get("detail") or ""))}"',
-    ]
-    if tag == "memory":
-        attrs.insert(1, f'type="{_xml_attr(category)}"')
-    head = f"<{tag} " + " ".join(attrs)
-    text = str(entry.get("text") or "")
-    if not text.strip():
-        return head + " />"
-    return f"{head}>\n{_xml_body(text)}\n</{tag}>"
-
-
-def _render_context_entries(entries: list[dict[str, Any]]) -> str:
-    skills = [e for e in entries if (e.get("category") or "") == "skills"]
-    rest = [e for e in entries if (e.get("category") or "") != "skills"]
-    by_score = lambda e: float(e.get("score") or 0.0)
-    skills.sort(key=by_score, reverse=True)
-    rest.sort(key=by_score, reverse=True)
-    return "\n".join(_render_context_entry(entry) for entry in [*skills, *rest])
-
-
-async def _afind_trajectory_entries(query: str) -> list[dict[str, Any]]:
-    """Fetch trajectory memories via scoped /find — bucketed context mode
-    can never reach them (they own no quota bucket)."""
-    try:
-        response = await _context_http.post(
-            f"{_OPENVIKING_URL}/api/v1/search/find",
-            headers={"X-API-Key": os.getenv("OPENVIKING_API_KEY", "")},
-            json={
-                "query": _recall_query(query),
-                "target_uri": _TRAJECTORY_DIR,
-                "limit": _TRAJECTORY_LIMIT,
-                "score_threshold": _CONTEXT_SCORE_FLOOR,
-            },
-        )
-        body = response.json()
-        if body.get("status") != "ok":
-            raise RuntimeError(str(body.get("error"))[:300])
-        hits = (body.get("result") or {}).get("memories") or []
-    except Exception as exc:
-        logging.warning(f"OpenViking trajectory find failed: {exc}")
-        return []
-    entries: list[dict[str, Any]] = []
-    for hit in hits:
-        uri = str(hit.get("uri") or "")
-        if not uri:
-            continue
-        entries.append(
-            {
-                "uri": uri,
-                "category": "memories",
-                "score": float(hit.get("score") or 0.0),
-                "detail": "abstract",
-                "text": str(hit.get("abstract") or hit.get("overview") or ""),
-            }
-        )
-    return entries
-
-
-async def aassemble_openviking_context(session_id: str, query: str) -> tuple[str, list[dict[str, Any]]]:
-    try:
-        response = await _context_http.post(
-            f"{_OPENVIKING_URL}/api/v1/search/search",
-            headers={"X-API-Key": os.getenv("OPENVIKING_API_KEY", "")},
-            json={
-                "query": _recall_query(query),
-                "mode": "context",
-                "session_id": session_id,
-                "quotas": _CONTEXT_QUOTAS,
-                "max_tokens": 6000,
-                "limit": 15,
-                "dedup_turns": 0,
-                "rewrite": False,
-                "score_threshold": _CONTEXT_SCORE_FLOOR,
-                "detail": {"skills": "overview", "experiences": "full", "memories": "abstract"},
-            },
-        )
-        body = response.json()
-        if body.get("status") != "ok":
-            raise RuntimeError(str(body.get("error"))[:300])
-        result = body.get("result") or {}
-    except Exception as exc:
-        logging.warning(f"OpenViking context assembly failed: {exc}")
-        return "", [], {} # type: ignore
-
-    entries = _filter_context_entries(result.get("entries") or [])
-    trajectory_entries = await _afind_trajectory_entries(query)
-    existing_uris = {entry.get("uri") for entry in entries}
-    entries.extend(e for e in trajectory_entries if e["uri"] not in existing_uris)
-    if not entries:
-        return "", [], {}
-    return (
-        f"{OPENVIKING_CONTEXT_MARKER}\n{_render_context_entries(entries)}\n</openviking_context>",
-        [_context_part_from_entry(entry) for entry in entries],
-        body,
-    ) # type: ignore
-
-
-async def afetch_retrieval_observer() -> dict[str, Any]:
-    """Read /observer/retrieval — retrieval quality and timing metrics."""
-    try:
-        response = await _context_http.get(
-            f"{_OPENVIKING_URL}/api/v1/observer/retrieval",
-            headers={"X-API-Key": os.getenv("OPENVIKING_API_KEY", "")},
-        )
-        return (response.json().get("result") or {})
-    except Exception as exc:
-        logging.warning(f"Retrieval observer fetch failed: {exc}")
-        return {}
-
-
-async def abench_context_latency(query: str, runs: int = 1, sample_delay: float = 1.0) -> None:
-    """Measure aassemble_openviking_context end-to-end latency.
-
-    Each iteration times a full context-assembly call, then reads the
-    server-side /observer/retrieval metrics so client and server views can be
-    compared. The observer table covers the last N retrieval queries; the last
-    rows correspond to these runs.
-    """
-    await ov_client.initialize()
-    print(f"Benchmarking context assembly ({runs} run(s)) for query:\n  {query!r}\n")
-    latencies: list[float] = []
-    for run in range(1, runs + 1):
-        start = asyncio.get_running_loop().time()
-        block, parts, body = await aassemble_openviking_context(session_id, query) # type: ignore
-        elapsed = asyncio.get_running_loop().time() - start
-        latencies.append(elapsed)
-        result = body.get("result") or {}
-        stats = result.get("stats") or {}
-        print(f"Run {run}: client latency {elapsed * 1000:.1f} ms | "
-              f"server time {float(body.get('time') or 0.0) * 1000:.1f} ms | "
-              f"entries {len(parts)} | block {len(block)} chars | "
-              f"stats {json.dumps(stats) if isinstance(stats, dict) else stats}")
-        if block:
-            print(f"  abstracts: {[str(e.get('text') or '')[:60] + '...' for e in result.get('entries') or []][:3]}")
-        # Give the observer a moment to record the retrieval before reading it
-        await asyncio.sleep(sample_delay)
-        observer = await afetch_retrieval_observer()
-        status_text = str(observer.get("status") or "").strip().splitlines()
-        print("  observer/retrieval: " + ("healthy" if observer.get("is_healthy") else "unavailable"))
-        for line in status_text[-6:]:
-            print(f"    {line}")
-        print()
-    if len(latencies) > 1:
-        lat_sorted = sorted(latencies)
-        mean = sum(latencies) / len(latencies)
-        med = (lat_sorted[(len(lat_sorted) - 1) // 2] + lat_sorted[len(lat_sorted) // 2]) / 2
-        print(f"Summary over {len(latencies)} runs: mean {mean * 1000:.1f} ms | "
-              f"median {med * 1000:.1f} ms | min {lat_sorted[0] * 1000:.1f} ms | "
-              f"max {lat_sorted[-1] * 1000:.1f} ms")
+context_compressor = create_openrouter_compressor()
 
 _FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
 
@@ -385,10 +215,9 @@ async def _load_mcp_tools() -> list:
 # Define the agent state
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
-    openviking_context: str
 
 
-def build_agent(all_tools: list) -> Any:
+def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") -> Any:
     # Create tool node
     tool_node = ToolNode(all_tools)
     model_with_tools = model.bind_tools(all_tools)
@@ -440,31 +269,33 @@ def build_agent(all_tools: list) -> Any:
  
     async def call_model(state: AgentState):
         system_prompt = (
-            "You are an adaptable AI agent. "
-            "Tools with name starting with viking_ are from OpenViking API.\n"
-            "Use them to access resources and skills when given an explicit uri starting with viking://\n"
-            "If any skill file references other files, assume those files can be accessed using the same base URI\n"
-            "NEVER use viking_read to access a url starting with https, use web_to_markdown_tool instead\n"
+            "You are an adaptable AI agent.\n"
             "\n"
-            "SKILL WORKFLOW (MANDATORY):\n"
-            "The OpenViking context below may contain <skill> entries. Each <skill> entry is a set of "
-            "step-by-step instructions for exactly the kind of task its description matches; the body "
-            "shown in the context is only an abstract. If ANY <skill> entry is relevant to the user's request:\n"
-            "1. FIRST call viking_read on that skill's uri to load the full instructions.\n"
-            "2. Follow those instructions exactly, using whatever tools they specify.\n"
-            "3. While a matching skill exists, do NOT use internet_search or web_to_markdown_tool directly; "
-            "use the search/fetch procedure the skill prescribes instead.\n"
-            "Call internet_search directly ONLY when no <skill> in the context matches the request, "
-            "or after the loaded skill explicitly tells you to fall back.\n"
+            "SESSION MEMORY (episodic, on-demand):\n"
+            "session_search queries your archived past sessions. Call it BEFORE redoing work "
+            "when the user's request may relate to something from a previous conversation — "
+            "prior decisions, findings, errors and their fixes, or procedures you already "
+            "worked out. It returns short excerpts, not full transcripts, so it is cheap to consult.\n"
+            "\n"
+            "PROMPT MEMORY (always-on, self-curated):\n"
+            "memory_manage edits your MEMORY.md (facts/decisions relevant to EVERY future "
+            "session) and USER.md (who the user is, preferences, working style). Combined "
+            f"budget: {MEMORY_CHAR_LIMIT} chars — keep entries terse, consolidate instead of accumulating. "
+            "Do NOT store topic-specific findings there; leave those to the session archive. "
+            "Memory edits take effect from the NEXT session, never mid-conversation.\n"
+            "\n"
+            "SKILLS (procedural memory, on demand):\n"
+            "The skills index below lists names + descriptions ONLY. If a listed skill "
+            "matches the task, call load_skill(name) FIRST and follow its loaded "
+            "instructions before falling back to generic approaches. You can curate "
+            "skills with skill_manage (create/patch/edit/delete/write_file/remove_file); "
+            "PREFER patch for updates — targeted and safe, unlike full rewrites.\n"
         )
 
-        context_block = state.get("openviking_context") or ""
-        if context_block:
-            system_prompt = (
-                f"{system_prompt}\n\n{context_block}\n\n"
-                "Reminder: if any <skill> above matches the user's request, call viking_read "
-                "on its uri and follow the loaded instructions before any other tool call."
-            )
+        if memory_block:
+            system_prompt = f"{system_prompt}\n{memory_block}\n"
+        if skill_index:
+            system_prompt = f"{system_prompt}\n{skill_index}\n"
 
         # Inject system prompt into messages
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"]) # type: ignore
@@ -514,172 +345,184 @@ def build_agent(all_tools: list) -> Any:
     app = workflow.compile()
     return app
 
-# CLI interface
-async def _load_archived_history(sid: str) -> list[BaseMessage]:
-    """Rebuild history from committed OpenViking archives when the session has no active messages."""
-    messages: list[BaseMessage] = []
-    for index in range(1, 1000):
-        try:
-            result = await ov_client.get_session_archive(sid, f"archive_{index:03d}")
-        except Exception:
-            break
-        for raw in result.get("messages") or []:
-            text = "\n".join(
-                part.get("text", "")
-                for part in raw.get("parts") or []
-                if part.get("type") == "text"
-            ).strip()
-            if not text:
-                continue
-            if raw.get("role") == "assistant":
-                messages.append(AIMessage(content=text))
-            elif raw.get("role") == "user":
-                messages.append(HumanMessage(content=text))
-    return messages
+# --- Periodic nudge: the learning loop's curation step (Hermes-style) ---
 
+async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str:
+    """Run one internal curation review over a completed turn (no user input).
 
-async def _commit_on_exit(session_id: str) -> None:
-    """Commit any pending session content before the CLI exits.
-
-    recorder.aclose() discards pending-commit bookkeeping without committing,
-    so this is the last chance to roll uncommitted turns into a searchable
-    archive (and trigger Working Memory / overview generation server-side).
+    The nudge model sees the turn as a flattened transcript and may call
+    memory_manage several times; its writes take effect from the next session.
+    Nudge activity is deliberately NOT written to the session archive.
     """
-    try:
-        result = await recorder.aflush(session_id)
-        if result:
-            print(f"Session {session_id} committed on exit.")
-        else:
-            print("Session already committed (nothing pending).")
-    except Exception as exc:
-        print(f"Warning: failed to commit session on exit: {str(exc)[:200]}")
+    if not recent_messages:
+        return "No memory updates."
+    bound = nudge_model if nudge_model is not None else model.bind_tools([memory_manage_tool, skill_manage_tool])
+    convo = [
+        SystemMessage(content=build_nudge_prompt(chars_used=memory.total_chars(), char_budget=MEMORY_CHAR_LIMIT)),
+        SystemMessage(content=f"Current memory contents:\n{memory.load() or '(empty)'}"),
+        SystemMessage(content=f"Current skills index:\n{skill_library.render_index() or '(none)'}"),
+        HumanMessage(
+            content=(
+                "RECENT CONVERSATION TURN:\n\n"
+                f"{flatten_transcript(recent_messages)}\n\n"
+                "Review it now and persist anything that clears the bar."
+            )
+        ),
+    ]
+    for _ in range(max_iters):
+        response = await bound.ainvoke(convo)
+        if not getattr(response, "tool_calls", None):
+            return (response.content or "No memory updates.").strip()[:200] or "No memory updates."
+        convo.append(response)
+        for call in response.tool_calls:
+            if call["name"] == "memory_manage":
+                result = memory_manage_tool.invoke(dict(call["args"]))
+            elif call["name"] == "skill_manage":
+                result = skill_manage_tool.invoke(dict(call["args"]))
+            else:
+                result = f"Rejected: unknown tool {call['name']!r} during nudge"
+            convo.append(ToolMessage(content=result, tool_call_id=call.get("id") or "nudge"))
+    return "Nudge reached its tool-call limit."
 
 
+async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str | None:
+    """Post-turn bookkeeping: count the turn and run the nudge when due."""
+    nudge_policy.record_turn(session_id)
+    if not nudge_policy.should_nudge(session_id):
+        return None
+    nudge_policy.mark_nudged(session_id)
+    return await run_memory_nudge(new_messages, nudge_model=nudge_model, max_iters=max_iters)
+
+
+# CLI interface
 async def run_cli(resume_session_id: str | None = None):
-    await ov_client.initialize()
     global session_id
 
     #mcp_tools = await _load_mcp_tools()
     #if mcp_tools:
     #    print(f"Connected to Finance Toolkit MCP ({len(mcp_tools)} tools)")
-    all_tools = [*tools]
-    app = build_agent(all_tools)
+    # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
+    all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
+        session_search_tool,
+        memory_manage_tool,
+        skill_manage_tool,
+        load_skill_tool,
+    ]
+    # Load the always-on memory block and the skills index once per session:
+    # stable prompt prefix (provider prompt-cache friendly); edits and new
+    # skills apply from the next session.
+    memory_block = memory.load()
+    skill_index = skill_library.render_index()
+    app = build_agent(all_tools, memory_block, skill_index)
 
-    print("LangGraph Agent CLI (type 'quit' to exit)")
+    print("LangGraph Agent CLI (nm-memory-layer: sessions + prompt memory + skills)")
     print("=" * 50)
     print(f"\nHello {user}\n")
+    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}")
+    print(f"Search summarizer: {search_summarizer.label if search_summarizer else 'disabled (raw excerpts)'}")
+    print(f"Context compressor: {context_compressor.label if context_compressor else 'disabled'}\n")
     print(f"Session ID: {session_id} (pass --session-id to resume)\n")
     messages = []
 
     if resume_session_id:
         session_id = resume_session_id
-        history = OpenVikingChatMessageHistory(session_id, _recorder=recorder)
-        messages = await history.aget_messages()
-        source = "active session history"
-        if not messages:
-            # Committed/pending sessions roll their turns into archives, so
-            # active messages can be empty even though history exists.
-            messages = await _load_archived_history(session_id)
-            source = "committed archives"
-        print(
-            f"Resumed session {session_id} ({len(messages)} messages from {source})\n"
-        )
+        messages = store.load_session(session_id)
+        if messages:
+            print(f"Resumed session {session_id} ({len(messages)} messages from local archive)\n")
+        else:
+            print(f"Session {session_id} not found in archive — starting fresh.\n")
 
+    try:
+        while True:
+            try:
+                user_input = input(f"\n{user}: ").strip()
 
-    
-    while True:
-        try:
-            user_input = input(f"\n{user}: ").strip()
+                if user_input.lower() in ['quit', 'exit', 'q']:
+                    print("Goodbye!")
+                    break
 
-            if user_input.lower() in ['quit', 'exit', 'q']:
-                print("Goodbye!")
-                break
-            
-            if not user_input:
-                continue
-            
-            # Assemble OpenViking context once per user turn
-            context_block, context_parts, _context_body = await aassemble_openviking_context(session_id, user_input) # type: ignore
-            
-            # Add user message
-            messages.append(HumanMessage(content=user_input))
-            input_message_count = len(messages)
-            
-            # Run the agent
-            print("\nAgent:\n", end="", flush=True)
-            
-            final_state = None
-            prev_count = input_message_count
-            async for state_snapshot in app.astream(
-                {"messages": messages, "openviking_context": context_block},
-                stream_mode="values",
-            ):
-                final_state = state_snapshot
-                snapshot_messages = state_snapshot["messages"]
-                for msg in snapshot_messages[prev_count:]:
-                    if isinstance(msg, AIMessage):
-                        if msg.content:
-                            print(msg.content)
-                        elif msg.tool_calls:
-                            print(f"[Calling tools: {[call['name'] + ' ' + str(call['args']) for call in msg.tool_calls]}]")
-                    elif isinstance(msg, ToolMessage):
-                        print(f"[Tool result: {msg.name}]")
-                prev_count = len(snapshot_messages)
-            
-            # Update messages with final state
-            if final_state and "messages" in final_state:
-                messages = final_state["messages"]
-                new_messages = messages[input_message_count - 1:]
-                # Commit the session
-                try:
+                if not user_input:
+                    continue
+
+                # Pre-flight context compression (Hermes-style): before hitting
+                # the token threshold, middle turns are summarized via the
+                # secondary LLM and lineage is recorded in the session store.
+                if context_compressor:
                     try:
-                        await recorder.arecord(
-                            session_id,
-                            new_messages,
-                            context_parts=context_parts,
-                        )
-                    except OpenVikingPartialWriteError as exc:
-                        await recorder.arecord(
-                            session_id,
-                            new_messages[exc.input_messages_consumed :],
-                        )
-                finally:
-                    # Flush even when recording partially failed, so whatever
-                    # reached the server still gets committed this turn.
-                    try:
-                        await recorder.aflush(session_id)
-                    except Exception as flush_exc:
-                        logging.warning(f"Session flush failed: {str(flush_exc)[:200]}")
-    
-        except KeyboardInterrupt:
-            print("\n\nInterrupted. Type 'quit' to exit.")
-        except Exception as e:
-            print(f"\nError: {str(e)}")
-            messages = messages[:-1] if messages else []
+                        cres = await asyncio.to_thread(context_compressor.compress, messages)
+                        if cres.compressed:
+                            store.record_compression(
+                                session_id,
+                                summary=cres.summary,
+                                summarized_first_turn=cres.summarized_first_turn,
+                                summarized_last_turn=cres.summarized_last_turn,
+                                message_count=cres.original_count,
+                                model=cres.model_label,
+                            )
+                            messages = cres.compressed_messages
+                            print(
+                                f"\n[context compression] turns {cres.summarized_first_turn}-"
+                                f"{cres.summarized_last_turn} summarized by {cres.model_label} "
+                                f"({cres.original_count} -> {cres.compressed_count} messages, {cres.elapsed_ms}ms)"
+                            )
+                    except Exception as comp_exc:
+                        logging.warning(f"Context compression failed: {str(comp_exc)[:200]}")
 
-    await _commit_on_exit(session_id)
-    await _context_http.aclose()
-    await recorder.aclose()
+                # Add user message
+                messages.append(HumanMessage(content=user_input))
+                input_message_count = len(messages)
+
+                # Run the agent
+                print("\nAgent:\n", end="", flush=True)
+
+                final_state = None
+                prev_count = input_message_count
+                async for state_snapshot in app.astream(
+                    {"messages": messages},
+                    stream_mode="values",
+                ):
+                    final_state = state_snapshot
+                    snapshot_messages = state_snapshot["messages"]
+                    for msg in snapshot_messages[prev_count:]:
+                        if isinstance(msg, AIMessage):
+                            if msg.content:
+                                print(msg.content)
+                            elif msg.tool_calls:
+                                print(f"[Calling tools: {[call['name'] + ' ' + str(call['args']) for call in msg.tool_calls]}]")
+                        elif isinstance(msg, ToolMessage):
+                            print(f"[Tool result: {msg.name}]")
+                    prev_count = len(snapshot_messages)
+
+                # Update messages with final state and persist the turn locally
+                if final_state and "messages" in final_state:
+                    messages = final_state["messages"]
+                    new_messages = messages[input_message_count - 1:]
+                    try:
+                        turn = store.record_turn(session_id, new_messages)
+                        logging.debug(f"Recorded turn {turn} ({len(new_messages)} messages)")
+                    except Exception as record_exc:
+                        logging.warning(f"Session record failed: {str(record_exc)[:200]}")
+                    # Periodic nudge: agent-curated memory review, no user input
+                    try:
+                        summary = await maybe_nudge(session_id, new_messages)
+                        if summary:
+                            print(f"\n[memory nudge] {summary}")
+                    except Exception as nudge_exc:
+                        logging.warning(f"Memory nudge failed: {str(nudge_exc)[:200]}")
+
+            except KeyboardInterrupt:
+                print("\n\nInterrupted. Type 'quit' to exit.")
+            except Exception as e:
+                print(f"\nError: {str(e)}")
+                messages = messages[:-1] if messages else []
+    finally:
+        store.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="LangGraph agent CLI with OpenViking session persistence")
+    parser = argparse.ArgumentParser(description="LangGraph agent CLI with local SQLite/FTS5 session persistence")
     parser.add_argument(
         "--session-id",
-        help="Resume an existing OpenViking session by loading its recorded history",
-    )
-    parser.add_argument(
-        "--bench-context",
-        metavar="QUERY",
-        help="Benchmark context-assembly latency for QUERY and report server-side retrieval metrics",
-    )
-    parser.add_argument(
-        "--bench-runs",
-        type=int,
-        default=1,
-        help="Number of benchmark iterations (default: 1)",
+        help="Resume an existing session by loading its recorded history from the local store",
     )
     args = parser.parse_args()
-    if args.bench_context:
-        asyncio.run(abench_context_latency(args.bench_context, max(1, args.bench_runs)))
-    else:
-        asyncio.run(run_cli(args.session_id))
+    asyncio.run(run_cli(args.session_id))

@@ -1,1 +1,0 @@
-- User researches equities via SEC filings over multiple turns, then asks for a concise consolidated report of everything asked; end-of-thread deliverable style = exec summary + event/financial tables + key observations/watch items + bottom line.
