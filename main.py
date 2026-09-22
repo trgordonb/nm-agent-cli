@@ -521,17 +521,36 @@ async def run_cli(resume_session_id: str | None = None):
         else:
             console.print(f"Session {session_id} not found in archive — starting fresh.")
 
+    console.print(
+        "[bright_black]Commands: /export [path] — dump the session archive · /exit — quit · "
+        "Ctrl+C — interrupt the current turn (session state preserved)[/bright_black]"
+    )
+
     try:
         while True:
             try:
                 console.print(f"\n[bold cyan]{user}[/bold cyan] » ", end="")
                 user_input = input().strip()
 
-                if user_input.lower() in ['quit', 'exit', 'q']:
+                if user_input.lower() in ['quit', 'exit', 'q', '/exit']:
                     console.print("Goodbye!", style="green")
                     break
 
                 if not user_input:
+                    continue
+
+                # Slash commands (never recorded to the session)
+                if user_input.startswith("/"):
+                    command, _, arg = user_input.partition(" ")
+                    if command == "/export":
+                        export_path = arg.strip() or f"sessions_export_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
+                        try:
+                            count = store.export_to_jsonl(export_path)
+                            console.print(f"Exported {count} session trajectories → {export_path}", style="green")
+                        except (OSError, ValueError) as export_exc:
+                            console.print(f"Export failed: {str(export_exc)[:150]}", style="red")
+                    else:
+                        console.print(f"Unknown command {command} — try /exit or /export [path]", style="yellow")
                     continue
 
                 # Pre-flight context compression (Hermes-style): before hitting
@@ -608,7 +627,7 @@ async def run_cli(resume_session_id: str | None = None):
                         logging.warning(f"Memory nudge failed: {str(nudge_exc)[:200]}")
 
             except KeyboardInterrupt:
-                console.print("\nInterrupted. Type 'quit' to exit.", style="yellow")
+                console.print("\nInterrupted — type your next message to continue, /exit to quit.", style="yellow")
             except Exception as e:
                 console.print(f"Error: {str(e)}", style="bold red")
                 messages = messages[:-1] if messages else []
