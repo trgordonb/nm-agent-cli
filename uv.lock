@@ -1286,6 +1286,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "requests" },
+    { name = "rich" },
     { name = "statistics" },
     { name = "tavily" },
 ]
@@ -1315,6 +1316,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "requests", specifier = ">=2.34.2" },
+    { name = "rich", specifier = ">=15.0.0" },
     { name = "statistics", specifier = ">=1.0.3.5" },
     { name = "tavily", specifier = ">=1.1.0" },
 ]

@@ -415,30 +415,59 @@ async def run_cli(resume_session_id: str | None = None):
     skill_index = skill_library.render_index()
     app = build_agent(all_tools, memory_block, skill_index)
 
-    print("LangGraph Agent CLI (nm-memory-layer: sessions + prompt memory + skills)")
-    print("=" * 50)
-    print(f"\nHello {user}\n")
-    print(f"Memory: {memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars | Skills: {len(skill_library.list_skills())}")
-    print(f"Search summarizer: {search_summarizer.label if search_summarizer else 'disabled (raw excerpts)'}")
-    print(f"Context compressor: {context_compressor.label if context_compressor else 'disabled'}\n")
-    print(f"Session ID: {session_id} (pass --session-id to resume)\n")
+    # --- Rich display ---------------------------------------------------------
+    from rich.console import Console
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+    from rich.table import Table
+
+    console = Console()
+
+    def render_banner() -> None:
+        info = Table.grid(padding=(0, 2))
+        info.add_row("[dim]memory[/dim]", f"{memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars")
+        info.add_row("[dim]skills[/dim]", str(len(skill_library.list_skills())))
+        info.add_row("[dim]nudge[/dim]", f"every {nudge_policy.interval} turns")
+        info.add_row(
+            "[dim]search summarizer[/dim]",
+            search_summarizer.label if search_summarizer else "disabled (raw excerpts)",
+        )
+        info.add_row("[dim]context compressor[/dim]", context_compressor.label if context_compressor else "disabled")
+        console.print(
+            Panel(
+                info,
+                title=f"[bold]NM-Agent-CLI",
+                subtitle=f"session {session_id[:8]} (pass --session-id to resume)",
+                border_style="cyan",
+            )
+        )
+
+    def render_event(text: str, style: str) -> None:
+        console.rule(style=style)
+        console.print(text, style=style, justify="center")
+
+    def render_assistant(content: str) -> None:
+        console.print(Markdown(content), markup=False)
+
+    render_banner()
     messages = []
 
     if resume_session_id:
         session_id = resume_session_id
         messages = store.load_session(session_id)
         if messages:
-            print(f"Resumed session {session_id} ({len(messages)} messages from local archive)\n")
+            console.print(f"Resumed session {session_id} ([bold]{len(messages)}[/bold] messages from local archive)")
         else:
-            print(f"Session {session_id} not found in archive — starting fresh.\n")
+            console.print(f"Session {session_id} not found in archive — starting fresh.")
 
     try:
         while True:
             try:
-                user_input = input(f"\n{user}: ").strip()
+                console.print(f"\n[bold cyan]{user}[/bold cyan] » ", end="")
+                user_input = input().strip()
 
                 if user_input.lower() in ['quit', 'exit', 'q']:
-                    print("Goodbye!")
+                    console.print("Goodbye!", style="green")
                     break
 
                 if not user_input:
@@ -460,10 +489,11 @@ async def run_cli(resume_session_id: str | None = None):
                                 model=cres.model_label,
                             )
                             messages = cres.compressed_messages
-                            print(
-                                f"\n[context compression] turns {cres.summarized_first_turn}-"
+                            render_event(
+                                f"context compression — turns {cres.summarized_first_turn}-"
                                 f"{cres.summarized_last_turn} summarized by {cres.model_label} "
-                                f"({cres.original_count} -> {cres.compressed_count} messages, {cres.elapsed_ms}ms)"
+                                f"({cres.original_count} → {cres.compressed_count} messages, {cres.elapsed_ms}ms)",
+                                "magenta",
                             )
                     except Exception as comp_exc:
                         logging.warning(f"Context compression failed: {str(comp_exc)[:200]}")
@@ -473,7 +503,7 @@ async def run_cli(resume_session_id: str | None = None):
                 input_message_count = len(messages)
 
                 # Run the agent
-                print("\nAgent:\n", end="", flush=True)
+                console.print()
 
                 final_state = None
                 prev_count = input_message_count
@@ -486,11 +516,12 @@ async def run_cli(resume_session_id: str | None = None):
                     for msg in snapshot_messages[prev_count:]:
                         if isinstance(msg, AIMessage):
                             if msg.content:
-                                print(msg.content)
+                                render_assistant(msg.content if isinstance(msg.content, str) else str(msg.content))
                             elif msg.tool_calls:
-                                print(f"[Calling tools: {[call['name'] + ' ' + str(call['args']) for call in msg.tool_calls]}]")
+                                calls = ", ".join(f"{call['name']}" for call in msg.tool_calls)
+                                console.print(f"[bright_black]tools › {calls}[/bright_black]")
                         elif isinstance(msg, ToolMessage):
-                            print(f"[Tool result: {msg.name}]")
+                            console.print(f"[bright_black]tool result ∙ {msg.name}[/bright_black]")
                     prev_count = len(snapshot_messages)
 
                 # Update messages with final state and persist the turn locally
@@ -506,14 +537,14 @@ async def run_cli(resume_session_id: str | None = None):
                     try:
                         summary = await maybe_nudge(session_id, new_messages)
                         if summary:
-                            print(f"\n[memory nudge] {summary}")
+                            render_event(f"memory nudge — {summary}", "yellow")
                     except Exception as nudge_exc:
                         logging.warning(f"Memory nudge failed: {str(nudge_exc)[:200]}")
 
             except KeyboardInterrupt:
-                print("\n\nInterrupted. Type 'quit' to exit.")
+                console.print("\nInterrupted. Type 'quit' to exit.", style="yellow")
             except Exception as e:
-                print(f"\nError: {str(e)}")
+                console.print(f"Error: {str(e)}", style="bold red")
                 messages = messages[:-1] if messages else []
     finally:
         store.close()
