@@ -20,6 +20,7 @@ dependencies = [
     "markdownify>=1.2.3",
     "nm-memory-layer",
     "openai>=2.53.0",
+    "prompt-toolkit>=3.0.53",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",

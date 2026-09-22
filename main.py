@@ -357,6 +357,57 @@ def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") 
 
 _MEMORY_TOOLS = {"load_skill", "session_search", "memory_manage", "skill_manage"}
 
+# --- Interactive prompt with slash-command autocomplete ----------------------
+# prompt_toolkit provides the live dropdown (type "/" while typing); Rich stays
+# in charge of everything after Enter. Falls back to plain input() when no TTY
+# is attached (piped stdin, tests).
+
+SLASH_COMMANDS: dict[str, str] = {
+    "/exit": "quit the session (exit/quit/q work too)",
+    "/export": "dump session trajectories to JSONL (/export [path])",
+}
+
+
+def _slash_completer():
+    """Completer with a live menu: pops as soon as input starts with '/', shows
+    each command with its description, filters as the user types."""
+    from prompt_toolkit.completion import Completer, Completion
+
+    class SlashCompleter(Completer):
+        def get_completions(self, document, complete_event):
+            text = document.text_before_cursor.lstrip()
+            if not text.startswith("/"):
+                return
+            partial = text[1:]
+            for slash_cmd, description in SLASH_COMMANDS.items():
+                if slash_cmd[1:].startswith(partial):
+                    yield Completion(slash_cmd, start_position=-len(partial), display=slash_cmd, display_meta=description)
+
+    return SlashCompleter()
+
+
+async def read_user_input(console, user: str) -> str:
+    """Prompt for one user line: interactive autocomplete via prompt_toolkit
+    when a TTY is attached, plain blocking input() otherwise (same result for
+    piped stdin)."""
+    console.print(f"[bold cyan]{user}[/bold cyan] » ", end="")
+    import sys
+
+    if sys.stdin.isatty():
+        from prompt_toolkit import PromptSession
+
+        session = getattr(read_user_input, "_session", None)
+        if session is None:
+            session = read_user_input._session = __import__(
+                "prompt_toolkit", fromlist=["PromptSession"]
+            ).PromptSession(
+                message="",                                            # rendered by Rich
+                completer=_slash_completer(),
+                complete_while_typing=True,
+            )
+        return (await session.prompt_async()).strip()
+    return input().strip()
+
 
 def _escaped(text: str) -> str:
     """Escape Rich markup so queries/skill names never break rendering."""
@@ -529,8 +580,7 @@ async def run_cli(resume_session_id: str | None = None):
     try:
         while True:
             try:
-                console.print(f"\n[bold cyan]{user}[/bold cyan] » ", end="")
-                user_input = input().strip()
+                user_input = await read_user_input(console, user)
 
                 if user_input.lower() in ['quit', 'exit', 'q', '/exit']:
                     console.print("Goodbye!", style="green")
@@ -539,9 +589,20 @@ async def run_cli(resume_session_id: str | None = None):
                 if not user_input:
                     continue
 
-                # Slash commands (never recorded to the session)
+                # Slash commands (never recorded to the session). A partial
+                # command with a unique match is completed automatically.
                 if user_input.startswith("/"):
                     command, _, arg = user_input.partition(" ")
+                    if command not in SLASH_COMMANDS:
+                        matched = [cmd for cmd in SLASH_COMMANDS if cmd.startswith(command)]
+                        if len(matched) == 1:
+                            command, arg = matched[0], arg
+                        else:
+                            console.print(f"Unknown command {command} — try /exit or /export [path]", style="yellow")
+                            continue
+                    if command == "/exit":
+                        console.print("Goodbye!", style="green")
+                        break
                     if command == "/export":
                         export_path = arg.strip() or f"sessions_export_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
                         try:
@@ -549,8 +610,6 @@ async def run_cli(resume_session_id: str | None = None):
                             console.print(f"Exported {count} session trajectories → {export_path}", style="green")
                         except (OSError, ValueError) as export_exc:
                             console.print(f"Export failed: {str(export_exc)[:150]}", style="red")
-                    else:
-                        console.print(f"Unknown command {command} — try /exit or /export [path]", style="yellow")
                     continue
 
                 # Pre-flight context compression (Hermes-style): before hitting
@@ -628,6 +687,9 @@ async def run_cli(resume_session_id: str | None = None):
 
             except KeyboardInterrupt:
                 console.print("\nInterrupted — type your next message to continue, /exit to quit.", style="yellow")
+            except EOFError:
+                console.print("Goodbye!", style="green")
+                break
             except Exception as e:
                 console.print(f"Error: {str(e)}", style="bold red")
                 messages = messages[:-1] if messages else []
