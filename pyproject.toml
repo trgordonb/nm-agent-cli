@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-nm-memory-layer = { path = "../nm-memory-layer", editable = true }
+nm-memory-layer = { git = "https://github.com/trgordonb/nm-memory-layer", branch = "main" }
 
 [dependency-groups]
 dev = [

@@ -1310,7 +1310,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.2.10" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "markdownify", specifier = ">=1.2.3" },
-    { name = "nm-memory-layer", editable = "../nm-memory-layer" },
+    { name = "nm-memory-layer", git = "https://github.com/trgordonb/nm-memory-layer?branch=main" },
     { name = "openai", specifier = ">=2.53.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -1783,22 +1783,12 @@ wheels = [
 [[package]]
 name = "nm-memory-layer"
 version = "0.1.0"
-source = { editable = "../nm-memory-layer" }
+source = { git = "https://github.com/trgordonb/nm-memory-layer?branch=main#91ba3a2ae15e3bbef5e84de8320c9891081c019d" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-openai" },
     { name = "pyyaml" },
 ]
-
-[package.metadata]
-requires-dist = [
-    { name = "langchain-core", specifier = ">=1.0.0" },
-    { name = "langchain-openai", specifier = ">=1.6.2" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "numpy"
