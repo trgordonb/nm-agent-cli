@@ -1,5 +1,6 @@
 import os
 import time
+import re
 import argparse
 import asyncio
 import functools
@@ -352,6 +353,59 @@ def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") 
     app = workflow.compile()
     return app
 
+# --- Console rendering for tool results --------------------------------------
+
+_MEMORY_TOOLS = {"load_skill", "session_search", "memory_manage", "skill_manage"}
+
+
+def _escaped(text: str) -> str:
+    """Escape Rich markup so queries/skill names never break rendering."""
+    from rich.markup import escape
+    return escape(text)
+
+
+def render_tool_result(console, msg, call) -> None:
+    """Detailed console line for memory-related tool calls; a dim generic line
+    for everything else. ``call`` is the matching AIMessage tool_call (name + args).
+    """
+    name = (call or {}).get("name") or msg.name or "tool"
+    args = (call or {}).get("args") or {}
+    content = msg.content if isinstance(msg.content, str) else str(msg.content)
+    failed = content.startswith(("Rejected:", "Error:"))
+
+    if name == "load_skill":
+        skill = _escaped(str(args.get("name", "")))
+        if failed:
+            console.print(f"[yellow]memory ∙ load_skill({skill}) — {content[:70]}[/yellow]")
+        else:
+            console.print(
+                f"[cyan]memory[/cyan] [bright_black]skill loaded:[/bright_black] "
+                f"[cyan]{skill}[/cyan] [bright_black]{len(content):,} chars / {content.count(chr(10)) + 1} lines[/bright_black]"
+            )
+    elif name == "session_search":
+        query = _escaped(str(args.get("query", "")))
+        if content == "No past session matches found.":
+            console.print(f"[cyan]memory[/cyan] [bright_black]session_search({query}) — 0 matches[/bright_black]")
+        elif content.startswith("[session_search: condensed by"):
+            header = content.splitlines()[0].strip("[]")
+            console.print(f"[cyan]memory ∙ session_search({query}) — {header.removeprefix('session_search: ')}[/cyan]")
+        else:
+            hits = len(re.findall(r"\[\d+\] session=", content))
+            console.print(f"[cyan]memory ∙ session_search({query}) — {hits} excerpts[/cyan]")
+    elif name == "memory_manage":
+        console.print(
+            f"[cyan]memory[/cyan] [bright_black]{args.get('operation', '')}.{args.get('target', '')}"
+            f" — {content[:60]}[/bright_black]"
+        )
+    elif name == "skill_manage":
+        console.print(
+            f"[cyan]memory[/cyan] [bright_black]skill {args.get('action', '')} {args.get('name', '')!r}"
+            f" — {content[:70]}[/bright_black]"
+        )
+    else:
+        style = "yellow" if failed else "bright_black"
+        console.print(f"[{style}]tool result ∙ {name}[/{style}]")
+
 # --- Periodic nudge: the learning loop's curation step (Hermes-style) ---
 
 async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str:
@@ -514,6 +568,7 @@ async def run_cli(resume_session_id: str | None = None):
 
                 final_state = None
                 prev_count = input_message_count
+                pending_calls: dict = {}  # tool_call_id -> call (for detailed result rendering)
                 async for state_snapshot in app.astream(
                     {"messages": messages},
                     stream_mode="values",
@@ -522,13 +577,17 @@ async def run_cli(resume_session_id: str | None = None):
                     snapshot_messages = state_snapshot["messages"]
                     for msg in snapshot_messages[prev_count:]:
                         if isinstance(msg, AIMessage):
+                            if msg.tool_calls:
+                                calls = ", ".join(
+                                    f"{call['name']}({_escaped(str(call['args'])[:40])})"
+                                    for call in msg.tool_calls
+                                )
+                                console.print(f"[bright_black]tools › {calls}[/bright_black]")
+                                pending_calls.update({call["id"]: call for call in msg.tool_calls if call.get("id")})
                             if msg.content:
                                 render_assistant(msg.content if isinstance(msg.content, str) else str(msg.content))
-                            elif msg.tool_calls:
-                                calls = ", ".join(f"{call['name']}" for call in msg.tool_calls)
-                                console.print(f"[bright_black]tools › {calls}[/bright_black]")
                         elif isinstance(msg, ToolMessage):
-                            console.print(f"[bright_black]tool result ∙ {msg.name}[/bright_black]")
+                            render_tool_result(console, msg, pending_calls.get(msg.tool_call_id))
                     prev_count = len(snapshot_messages)
 
                 # Update messages with final state and persist the turn locally
