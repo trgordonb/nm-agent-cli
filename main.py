@@ -389,23 +389,28 @@ def _slash_completer():
 async def read_user_input(console, user: str) -> str:
     """Prompt for one user line: interactive autocomplete via prompt_toolkit
     when a TTY is attached, plain blocking input() otherwise (same result for
-    piped stdin)."""
-    console.print(f"[bold cyan]{user}[/bold cyan] » ", end="")
+    piped stdin).
+
+    prompt_toolkit owns the whole prompt line (styled prefix included) — mixing
+    a Rich-printed prefix with prompt_toolkit's line editor makes it repaint
+    from column 0 and misplace the cursor.
+    """
     import sys
 
     if sys.stdin.isatty():
         from prompt_toolkit import PromptSession
+        from prompt_toolkit.styles import Style
 
         session = getattr(read_user_input, "_session", None)
         if session is None:
-            session = read_user_input._session = __import__(
-                "prompt_toolkit", fromlist=["PromptSession"]
-            ).PromptSession(
-                message="",                                            # rendered by Rich
+            session = read_user_input._session = PromptSession(
+                message=[("bold cyan", user), ("", " » ")],
                 completer=_slash_completer(),
                 complete_while_typing=True,
             )
+        console.print()  # breathing room between Rich output and the input line
         return (await session.prompt_async()).strip()
+    console.print(f"[bold cyan]{user}[/bold cyan] » ", end="")
     return input().strip()
 
 
