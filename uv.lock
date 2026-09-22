@@ -1787,7 +1787,7 @@ wheels = [
 [[package]]
 name = "nm-memory-layer"
 version = "0.1.0"
-source = { git = "https://github.com/trgordonb/nm-memory-layer?branch=main#91ba3a2ae15e3bbef5e84de8320c9891081c019d" }
+source = { git = "https://github.com/trgordonb/nm-memory-layer?branch=main#0f745fa966a1f37912db3f2356dad732acc0e2b3" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-openai" },

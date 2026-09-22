@@ -29,5 +29,6 @@ skills/*
 # Console-clean diagnostics llm/md
 agent.log
 
-# LLM wiki
-llm-wiki/
+# LLM wiki: folder tracked via .gitkeep; pages stay local-only
+llm-wiki/*
+!llm-wiki/.gitkeep
