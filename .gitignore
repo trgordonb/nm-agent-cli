@@ -25,3 +25,6 @@ skills/*
 
 # Memory files are tracked as empty placeholders; local agent-curated content
 # is hidden from git via skip-worktree (see CLAUDE.md).
+
+# Console-clean diagnostics llm/md
+agent.log

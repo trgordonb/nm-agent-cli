@@ -42,10 +42,17 @@ load_dotenv(override=True)
 # via the httpx logger — the actual request line of every HTTP call made by the
 # process (e.g. "HTTP Request: POST https://api.z.ai/api/paas/v4/chat/completions
 # HTTP/1.1 200 OK"), which is how we verify which endpoint is really hit.
+# Diagnostics (LLM calls, HTTP request lines, summarizer/compressor timings)
+# go to agent.log, NOT the console — the Rich CLI stays clean. Only warnings
+# and errors surface on the console (stderr, so they never collide with Rich).
+_console_logs = logging.StreamHandler()
+_console_logs.setLevel(logging.WARNING)
+_file_logs = logging.FileHandler("agent.log")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     datefmt="%H:%M:%S",
+    handlers=[_console_logs, _file_logs],
     force=True,  # imported libs may pre-add root handlers, making plain basicConfig a no-op
 )
 logging.getLogger("httpx").setLevel(logging.INFO)
