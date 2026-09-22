@@ -1,4 +1,6 @@
-# langgraph-demo
+# NM-Agent-CLI
+
+https://github.com/trgordonb/NM-Agent-CLI
 
 A LangGraph financial-research agent that runs on the **Hermes-style memory layer** ([nm-memory-layer](https://github.com/trgordonb/nm-memory-layer)) — a self-improving agent whose learning loop is the memory system itself, not model weights.
 
@@ -15,7 +17,9 @@ The agent: EDGAR filings (EdgarTools), market-data pipelines (Dukascopy tick dat
 | Search summarization | FTS5 excerpts condensed by a secondary LLM (OpenRouter) before entering context — `[session_search: condensed by ...]` |
 | Context compression | Before the token threshold, middle turns are summarized into a `<conversation_summary>` block; turns stay fully archived with lineage in the `compressions` table |
 
-All memory code lives in the `nm-memory-layer` repo — see its README for the architecture. This repo is the consumer.
+All memory code lives in the [nm-memory-layer](https://github.com/trgordonb/nm-memory-layer) repo — see its README (and its `CLAUDE.md` for the full API reference). This repo is the consumer.
+
+Copy `.env.example` to `.env` and fill in your keys.
 
 ## Quick start
 
@@ -38,4 +42,5 @@ Env config lives in `.env` (not committed): `OPENAI_API_KEY`/`OPENAI_BASE_URL` (
 
 - `CLAUDE.md` — repo working notes for agents (wiring, env, remaining OpenViking traces)
 - `HISTORY.md` — per-phase changelog of the memory-layer cutover
-- Memory layer internals: `~/projects/nm-memory-layer` (CLAUDE.md there is the full API reference)
+- Memory layer internals: https://github.com/trgordonb/nm-memory-layer (`CLAUDE.md` there is the full API reference)
+- Engine docs: https://hermes-agent.nousresearch.com/docs (the architecture this repo mirrors)
