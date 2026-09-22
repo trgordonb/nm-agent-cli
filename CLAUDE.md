@@ -36,3 +36,7 @@ uv run pytest tests/ -q                   # integration tests for main.py wiring
 ## Roadmap
 
 Phases 2–5 (prompt memory, periodic nudge, skills layer, compression) are implemented in `nm-memory-layer` and wired here; see that repo's CLAUDE.md.
+
+## Memory files and git
+
+`memories/MEMORY.md` and `memories/USER.md` are committed as **empty placeholders**; the agent's locally curated content is hidden from git via `skip-worktree` (see `git ls-files -v | grep ^S`). After a fresh clone, the placeholders are empty — the agent works fine with empty memory (it re-learns via the nudge). If a file gets accidentally overwritten locally, restore curated content from a backup and re-run `git update-index --skip-worktree memories/MEMORY.md memories/USER.md`.
