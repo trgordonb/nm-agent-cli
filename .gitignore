@@ -28,3 +28,6 @@ skills/*
 
 # Console-clean diagnostics llm/md
 agent.log
+
+# LLM wiki
+llm-wiki/

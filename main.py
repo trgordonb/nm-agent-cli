@@ -30,8 +30,10 @@ from nm_memory_layer import (
     create_openrouter_summarizer,
     create_session_search_tool,
     create_skill_manage_tool,
+    create_wiki_search_tool,
     flatten_transcript,
 )
+from nm_memory_layer import WikiStore
 
 # override=True: .env is the source of truth for this project. Without it,
 # dotenv will NOT replace variables already exported in the shell (e.g. an
@@ -223,6 +225,7 @@ async def _load_mcp_tools() -> list:
 # Define the agent state
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    wiki_context: str  # per-turn wiki recall, injected pre-flight (not archived)
 
 
 def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") -> Any:
@@ -298,12 +301,21 @@ def build_agent(all_tools: list, memory_block: str = "", skill_index: str = "") 
             "instructions before falling back to generic approaches. You can curate "
             "skills with skill_manage (create/patch/edit/delete/write_file/remove_file); "
             "PREFER patch for updates — targeted and safe, unlike full rewrites.\n"
+            "\n"
+            "WIKI (persistent knowledge base, auto-recalled):\n"
+            "When a <wiki_context> block appears below, its pages match the user's"
+            " request — treat them as recorded project knowledge and cite/refine"
+            " accordingly; read the full page with read_file if details matter."
+            " You can also delve deeper with wiki_search(query).\n"
         )
 
         if memory_block:
             system_prompt = f"{system_prompt}\n{memory_block}\n"
         if skill_index:
             system_prompt = f"{system_prompt}\n{skill_index}\n"
+        wiki_block = state.get("wiki_context") or ""
+        if wiki_block:
+            system_prompt = f"{system_prompt}\n{wiki_block}\n"
 
         # Inject system prompt into messages
         messages = [SystemMessage(content=system_prompt)] + list(state["messages"]) # type: ignore
@@ -519,12 +531,16 @@ async def run_cli(resume_session_id: str | None = None):
     #if mcp_tools:
     #    print(f"Connected to Finance Toolkit MCP ({len(mcp_tools)} tools)")
     # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
+    wiki = WikiStore()  # absent/empty ./llm-wiki -> tool absent, pre-flight inactive
     all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
         session_search_tool,
         memory_manage_tool,
         skill_manage_tool,
         load_skill_tool,
     ]
+    wiki_search_tool = create_wiki_search_tool(wiki) if wiki.available() else None
+    if wiki_search_tool:
+        all_tools.append(wiki_search_tool)
     # Load the always-on memory block and the skills index once per session:
     # stable prompt prefix (provider prompt-cache friendly); edits and new
     # skills apply from the next session.
@@ -550,6 +566,7 @@ async def run_cli(resume_session_id: str | None = None):
             search_summarizer.label if search_summarizer else "disabled (raw excerpts)",
         )
         info.add_row("[dim]context compressor[/dim]", context_compressor.label if context_compressor else "disabled")
+        info.add_row("[dim]wiki[/dim]", "llm-wiki (auto-recall + wiki_search)" if wiki.available() else "absent")
         console.print(
             Panel(
                 info,
@@ -649,11 +666,22 @@ async def run_cli(resume_session_id: str | None = None):
                 # Run the agent
                 console.print()
 
+                # Pre-flight wiki recall: matched llm-wiki pages ride into the
+                # system prompt for THIS turn only (never archived).
+                wiki_context = wiki.build_context(user_input) if wiki.available() else ""
+                state_input = {"messages": messages}
+                if wiki_context:
+                    state_input["wiki_context"] = wiki_context
+                    console.print(
+                        f"[cyan]wiki ∙ {wiki_context.count('<page path=')} matching page(s) recalled"
+                        f" (wiki_context injected)[/cyan]"
+                    )
+
                 final_state = None
                 prev_count = input_message_count
                 pending_calls: dict = {}  # tool_call_id -> call (for detailed result rendering)
                 async for state_snapshot in app.astream(
-                    {"messages": messages},
+                    state_input,
                     stream_mode="values",
                 ):
                     final_state = state_snapshot

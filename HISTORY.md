@@ -2,6 +2,14 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-22 — branch `memory-layer` — wiki recall layer (llm-wiki)
+
+Seventh memory layer: the local llm-wiki (OKF) knowledge base.
+
+- Pre-flight `<wiki_context>` injection per user turn (telemetry line `wiki ∙ N matching page(s) recalled`), never archived — the prompt prefix stays per-turn this time (OpenViking-style injection), accepted cache cost for always-relevant recall.
+- Conditions: only when the wiki exists AND pages rank > 0; `WIKI_DIR` env (default `./llm-wiki`).
+- `wiki_search` tool bound alongside the other memory tools when the wiki exists; live-verified the agent citing wiki notes and reading `raw/` sources.
+
 ## 2026-09-21 — branch `memory-layer` — Phase 5: context compression with lineage
 
 Final phase of the Hermes-style memory stack.
