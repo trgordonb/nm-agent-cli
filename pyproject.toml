@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "deepagents>=0.7.4",
     "edgartools>=5.56.0",
+    "fastembed>=0.8.1",
     "langchain>=1.3.14",
     "langchain-community>=0.4.2",
     "langchain-mcp-adapters>=0.3.2",
@@ -25,6 +26,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
     "rich>=15.0.0",
+    "sqlite-vec>=0.1.9",
     "statistics>=1.0.3.5",
     "tavily>=1.1.0",
 ]
