@@ -23,12 +23,28 @@ Add additional types here as the wiki evolves.
 
 ## Tag taxonomy
 
-(Empty initially. Add tags here as you adopt them, with one-line descriptions. Keep this list small and disciplined — a wiki with 200 tags has effectively no tags.)
+Tags used across ingested pages (keep this list small and disciplined — a wiki with 200 tags has effectively no tags):
 
-Example structure:
-- `methodology` — pages about research or analytical methods.
-- `open-question` — pages or sections that flag unresolved questions.
-- `contested` — pages where sources contradict.
+- `volatility` — volatility strategies, forecasting, and risk.
+- `risk-premia` — premium-harvesting and its compensation-for-tail-risk framing.
+- `trend-following`, `cta` — trend/CTA research (pair them).
+- `tail-risk` — crisis behavior, hedging, convexity.
+- `momentum` — cross-sectional or time-series momentum.
+- `mean-reversion` — short-horizon equity reversion.
+- `market-timing`, `etf-rotation`, `sector-rotation` — timing/rotation strategy genres.
+- `backtest` — backtest construction and pitfalls.
+- `overfitting` — curve-fitting, detection, model-selection bias.
+- `research-methodology` — how research is done (incl. negative results).
+- `machine-learning` — ML methods applied to trading.
+- `regime-analysis` — regime-conditional evaluation.
+- `forecasting` — predictive modeling.
+- `hedging` — hedge construction and filtering.
+- `portfolio-allocation` — allocation and sizing questions.
+- `performance-measurement` — metrics (Sharpe, alpha, skew, convexity).
+- `crypto` — crypto-asset-specific research.
+- `negative-result` — documented findings that did not pan out.
+- `theory` — conceptual/theoretical framing (e.g., MDL).
+- Entity-people tag: `quant-researcher`; minor topic tags (`technical`, `statistics`, `simulation`, `volume`, `trade-selection`, `smart-beta`, `leverage`, `small-edge`) may appear sparingly — promote to the canonical list if they recur.
 
 ## Page sizing
 
@@ -106,7 +122,9 @@ Generation is reproducible from markdown via `scripts/wiki_graph_extract.py`. Th
 
 ## Workflow customizations
 
-(Empty initially. Document any deviations from the default ingest/query/lint workflows here.)
+- **Batch ingest mode:** the 2026-09-23 ingest was hands-off (10 sources at once). Per the ingest workflow's batch rule, ambiguous claims were hedged in-page rather than discussed; anything needing user judgment is listed in each source page's "Open questions" section.
+- **Two-author corpus:** sources split cleanly between Artur Sepp (volatility/trend/regime modeling) and Cesar Alvarez (replication/robustness testing). Entity pages for each double as style guides; cross-corpus claims (e.g., overfitting stances) should cite both.
+- **Source pages carry an "Open questions" section** in addition to the standard structure — hedge unverifiable claims there rather than in the summary body.
 
 ## User preferences
 

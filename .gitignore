@@ -36,3 +36,7 @@ agent.log
 # LLM wiki: folder tracked via .gitkeep; pages stay local-only
 llm-wiki/*
 !llm-wiki/.gitkeep
+
+# raw/: personal research clippings; local-only, folder shell committed
+/raw/*
+!/raw/.gitkeep
