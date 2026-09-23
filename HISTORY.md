@@ -2,6 +2,12 @@
 
 Track of significant changes per branch. Dates are implementation dates.
 
+## 2026-09-23 — branch `wiki` — hybrid wiki search + first ingest (30 pages)
+
+- Ingest took over from keyword recall only after nm-memory-layer's `nm-memory-layer[wiki-hybrid]` extra was honored here (fastembed + sqlite-vec pulled in). `WikiStore` now runs the full hybrid path when the wiki has been initialized by the skill's own `.wiki-cache/`.
+- 10 quant-research clippings ingested (trace 01a0ce7e): 30 wiki pages (10 source, 2 entity, 29->29 concept pages), tag taxonomy in SCHEMA.md, cross-links across the Sepp/Alvarez corpus; graph layer not yet populated.
+- `.env.example` gained WIKI_DIR=./wiki; `raw/` clippings stay local-only (folder shell committed).
+
 ## 2026-09-22 — branch `memory-layer` — wiki recall layer (llm-wiki)
 
 Seventh memory layer: the local llm-wiki (OKF) knowledge base.
