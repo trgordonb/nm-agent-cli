@@ -22,6 +22,10 @@ sessions.db-*
 # Agent state: folder structure tracked via .gitkeep; live content stays local-only
 skills/*
 !skills/.gitkeep
+# The self-evolving llm-wiki skill is explicitly tracked (it carries the
+# agent-authored patches); every other skill stays local-only.
+!skills/llm-wiki/
+!skills/llm-wiki/**
 
 # Memory files are tracked as empty placeholders; local agent-curated content
 # is hidden from git via skip-worktree (see CLAUDE.md).
