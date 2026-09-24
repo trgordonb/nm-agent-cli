@@ -19,13 +19,9 @@ token-use/
 sessions.db
 sessions.db-*
 
-# Agent state: folder structure tracked via .gitkeep; live content stays local-only
+# Skills: folder shell tracked via .gitkeep; live skills stay local-only
 skills/*
 !skills/.gitkeep
-# The self-evolving llm-wiki skill is explicitly tracked (it carries the
-# agent-authored patches); every other skill stays local-only.
-!skills/llm-wiki/
-!skills/llm-wiki/**
 
 # Memory files are tracked as empty placeholders; local agent-curated content
 # is hidden from git via skip-worktree (see CLAUDE.md).
@@ -33,17 +29,14 @@ skills/*
 # Console-clean diagnostics llm/md
 agent.log
 
-# LLM wiki: folder tracked via .gitkeep; pages stay local-only
-llm-wiki/*
-!llm-wiki/.gitkeep
+# Old OKF llm-wiki: obsolete (replaced by the llm-wiki-v3 skill and wiki/)
 
 # raw/: personal research clippings; local-only, folder shell committed
 /raw/*
 !/raw/.gitkeep
-
-# Obsidian config (created on vault open) — local-only
-wiki/.obsidian/
-.obsidian/
+# Wiki: keep the bootstrapped content local-only (fresh-run users bootstrap their own wiki)
+wiki/*
+!wiki/.gitkeep
 
 # Python bytecode inside skill scripts (gitignored at the repo level)
 skills/**/__pycache__/
