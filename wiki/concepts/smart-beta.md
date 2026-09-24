@@ -4,7 +4,16 @@ title: "Smart beta"
 tags: [smart-beta, crypto, portfolio-allocation]
 sources: [crypto-smart-beta-strategies]
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
+graph:
+  relationships:
+    - predicate: depends_on
+      object: concept:bootstrapping-simulation
+      source: crypto-smart-beta-strategies
+      evidence: "To overcome these challenges, I constructed a bootstrapping simulation engine which allows to generate joint paths of price and fundamental data for the empirical distributions without breaking the correlation and auto-correlation structure of dependencies in the data."
+      raw_ref: "raw/crypto-smart-beta-strategies.md#L22"
+      confidence: high
+      status: current
 ---
 
 # Smart beta

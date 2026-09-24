@@ -6,7 +6,66 @@ aliases: ["alvarez quant trading"]
 tags: [quant-researcher, backtesting, research-methodology]
 sources: [benford-law-strategy-selection, historical-volatility-parameter-adjustment, sector-rotation-trading-rules, spy-sso-tlt-strategy, volume-and-mean-reversion]
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
+graph:
+  aliases: ["alvarez quant trading"]
+  relationships:
+    - predicate: authored
+      object: source:benford-law-strategy-selection
+      source: benford-law-strategy-selection
+      evidence: 'author: "[[Cesar Alvarez]]"'
+      raw_ref: "raw/benford-law-strategy-selection.md#L5"
+      confidence: high
+      status: current
+    - predicate: authored
+      object: source:historical-volatility-parameter-adjustment
+      source: historical-volatility-parameter-adjustment
+      evidence: 'author: "[[Cesar Alvarez]]"'
+      raw_ref: "raw/historical-volatility-parameter-adjustment.md#L5"
+      confidence: high
+      status: current
+    - predicate: authored
+      object: source:sector-rotation-trading-rules
+      source: sector-rotation-trading-rules
+      evidence: 'author: "[[Cesar Alvarez]]"'
+      raw_ref: "raw/sector-rotation-trading-rules.md#L5"
+      confidence: high
+      status: current
+    - predicate: authored
+      object: source:spy-sso-tlt-strategy
+      source: spy-sso-tlt-strategy
+      evidence: 'author: "[[Cesar Alvarez]]"'
+      raw_ref: "raw/spy-sso-tlt-strategy.md#L5"
+      confidence: high
+      status: current
+    - predicate: authored
+      object: source:volume-and-mean-reversion
+      source: volume-and-mean-reversion
+      evidence: 'author: "[[Cesar Alvarez]]"'
+      raw_ref: "raw/volume-and-mean-reversion.md#L5"
+      confidence: high
+      status: current
+    - predicate: works_on
+      object: concept:backtest
+      source: spy-sso-tlt-strategy
+      evidence: "It is easy to forget the step of removing rules. Removing the SSO rule shows that it was mostly adding volatility."
+      raw_ref: "raw/spy-sso-tlt-strategy.md#L80"
+      confidence: high
+      status: current
+    - predicate: works_on
+      object: concept:overfitting
+      source: benford-law-strategy-selection
+      evidence: "My hypothesis was that failure to follow Benford''s Law implied a higher potential for curve fitting, which then implies that those in-sample runs in the top tercile for CAR and bottom tercile for Chi-Square Statistic would again end up in the top tercile for CAR in the out-of-sample."
+      raw_ref: "raw/benford-law-strategy-selection.md#L62"
+      confidence: high
+      status: current
+    - predicate: works_on
+      object: concept:parameter-robustness
+      source: historical-volatility-parameter-adjustment
+      evidence: "Since I want to focus on testing since 2000, I calculated the 80% value for the 21-day historical volatility since 1999, because I wanted a year of data before the start of the test. The 80% value for this period is 21.2, which is substantially different from the 17 value used. This is a concern."
+      raw_ref: "raw/historical-volatility-parameter-adjustment.md#L56"
+      confidence: high
+      status: current
 ---
 
 # Cesar Alvarez

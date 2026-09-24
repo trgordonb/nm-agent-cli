@@ -4,7 +4,16 @@ title: "Trend following"
 tags: [trend-following, cta, momentum]
 sources: [trend-following-tail-risk-hedging-alpha, trend-following-ctas-vs-arp-products]
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
+graph:
+  relationships:
+    - predicate: depends_on
+      object: concept:return-autocorrelation
+      source: trend-following-tail-risk-hedging-alpha
+      evidence: "The nature of trend-followers is to benefit from markets where prices and returns are auto-correlated, which implies the persistence of trends over longer time horizons."
+      raw_ref: "raw/trend-following-tail-risk-hedging-alpha.md#L47"
+      confidence: high
+      status: current
 ---
 
 # Trend following

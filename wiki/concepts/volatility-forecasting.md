@@ -4,7 +4,16 @@ title: "Volatility forecasting"
 tags: [volatility, forecasting]
 sources: [machine-learning-for-volatility-trading, historical-volatility-parameter-adjustment]
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
+graph:
+  relationships:
+    - predicate: depends_on
+      object: concept:model-cycling
+      source: machine-learning-for-volatility-trading
+      evidence: "The goal is to dynamically select the best model out of 40 that provides the best predicative power out-of-sample."
+      raw_ref: "raw/machine-learning-for-volatility-trading.md#L34"
+      confidence: high
+      status: current
 ---
 
 # Volatility forecasting

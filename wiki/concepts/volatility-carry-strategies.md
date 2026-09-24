@@ -4,7 +4,16 @@ title: "Volatility carry strategies"
 tags: [volatility, risk-premia]
 sources: [allocation-to-systematic-volatility-strategies, trend-following-ctas-vs-arp-products]
 created: 2026-09-23
-updated: 2026-09-23
+updated: 2026-09-24
+graph:
+  relationships:
+    - predicate: depends_on
+      object: concept:volatility-risk-premia
+      source: allocation-to-systematic-volatility-strategies
+      evidence: "I present a few systematic strategies for investing into volatility risk-premia and illustrate their back-tested performance."
+      raw_ref: "raw/allocation-to-systematic-volatility-strategies.md#L12"
+      confidence: high
+      status: current
 ---
 
 # Volatility carry strategies
