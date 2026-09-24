@@ -1,398 +1,467 @@
 graph LR
     n0["Backtesting (practice and pitfalls)"]
-    n1["Bootstrapping simulation (for short histories)"]
-    n2["Convexity (return profile)"]
-    n3["Crisis alpha"]
-    n4["Delta hedging"]
-    n5["Look-ahead bias"]
-    n6["Machine learning for trading"]
-    n7["Market timing (monthly ETF strategies)"]
-    n8["Model cycling"]
-    n9["Momentum"]
-    n10["Overfitting (and its detection)"]
-    n11["Parameter robustness"]
-    n12["Regime analysis"]
-    n13["Regime-conditional beta"]
-    n14["Research methodology (quant trading)"]
-    n15["Return autocorrelation (as trend-following driver)"]
-    n16["Risk-premia alpha"]
-    n17["Sector rotation"]
-    n18["Statistical filtering (roll filter)"]
-    n19["Stock-bond correlation (regime risk)"]
-    n20["Tail risk hedging"]
-    n21["Trend following"]
-    n22["Volatility carry strategies"]
-    n23["Volatility estimators"]
-    n24["Volatility filtering (timing gates)"]
-    n25["Volatility forecasting"]
-    n26["Volatility risk premia"]
-    n27["Volatility targeting"]
-    n28["Artur Sepp"]
-    n29["Cesar Alvarez"]
-    n30["Allocation to systematic volatility strategies using VIX fut"]
-    n31["Benford's Law and Strategy Selection"]
-    n32["Developing systematic smart beta strategies for crypto asset"]
-    n33["Using Historical Volatility for Parameter Adjustment"]
-    n34["Machine Learning for Volatility Trading"]
-    n35["Sector Rotation Strategy: Should Trading Rules Make Sense?"]
-    n36["SPY, SSO and TLT Strategy"]
-    n37["Trend-Following CTAs vs Alternative Risk-Premia (ARP) produc"]
-    n38["Trend-following strategies for tail-risk hedging and alpha g"]
-    n39["Volume and Mean Reversion"]
-    n1 -->|mentions| n18
-    n25 -->|mentions| n33
-    n2 -->|mentions| n20
-    n34 -->|mentions| n23
-    n17 -->|mentions| n11
-    n12 -->|mentions| n5
-    n4 -->|mentions| n18
-    n27 -->|sourced_from| n34
-    n24 -->|mentions| n18
-    n9 -->|mentions| n38
-    n29 -->|sourced_from| n31
-    n12 -->|mentions| n8
-    n0 -->|sourced_from| n39
-    n8 -->|mentions| n35
-    n4 -->|sourced_from| n37
-    n24 -->|mentions| n13
-    n12 -->|mentions| n37
-    n0 -->|mentions| n5
-    n39 -->|mentions| n29
-    n29 -->|mentions| n11
-    n3 -->|mentions| n38
-    n5 -->|mentions| n11
-    n22 -->|mentions| n26
-    n11 -->|mentions| n33
-    n13 -->|mentions| n22
-    n28 -->|authored| n38
-    n32 -->|mentions| n28
-    n28 -->|sourced_from| n34
-    n25 -->|mentions| n10
-    n34 -->|mentions| n8
-    n10 -->|mentions| n5
-    n30 -->|mentions| n4
-    n0 -->|sourced_from| n36
-    n14 -->|mentions| n18
-    n5 -->|mentions| n13
-    n7 -->|mentions| n35
-    n28 -->|mentions| n37
-    n19 -->|mentions| n36
-    n22 -->|mentions| n37
-    n0 -->|mentions| n33
-    n21 -->|mentions| n38
-    n29 -->|mentions| n33
-    n38 -->|mentions| n27
-    n12 -->|sourced_from| n30
-    n14 -->|mentions| n5
-    n15 -->|mentions| n38
-    n23 -->|mentions| n8
-    n36 -->|mentions| n11
-    n12 -->|mentions| n11
-    n0 -->|sourced_from| n35
-    n20 -->|mentions| n38
-    n27 -->|sourced_from| n38
-    n15 -->|sourced_from| n38
-    n30 -->|mentions| n3
-    n4 -->|mentions| n22
-    n13 -->|sourced_from| n30
-    n9 -->|mentions| n15
-    n28 -->|mentions| n34
-    n28 -->|mentions| n32
-    n25 -->|sourced_from| n33
-    n13 -->|sourced_from| n38
-    n11 -->|mentions| n5
-    n5 -->|sourced_from| n33
-    n10 -->|sourced_from| n37
-    n15 -->|mentions| n8
-    n12 -->|mentions| n13
-    n2 -->|mentions| n38
-    n14 -->|mentions| n13
-    n2 -->|mentions| n4
-    n15 -->|depends_on| n21
-    n12 -->|mentions| n7
-    n29 -->|sourced_from| n36
-    n4 -->|mentions| n37
-    n11 -->|mentions| n35
-    n10 -->|mentions| n33
-    n29 -->|mentions| n10
-    n12 -->|sourced_from| n34
-    n36 -->|mentions| n24
-    n28 -->|sourced_from| n32
-    n12 -->|mentions| n15
-    n37 -->|mentions| n28
-    n1 -->|mentions| n0
-    n8 -->|mentions| n10
-    n4 -->|mentions| n20
-    n5 -->|mentions| n30
-    n17 -->|sourced_from| n35
-    n3 -->|mentions| n30
-    n22 -->|mentions| n4
-    n24 -->|sourced_from| n33
-    n35 -->|mentions| n7
-    n28 -->|works_on| n22
-    n28 -->|sourced_from| n38
-    n10 -->|mentions| n37
-    n2 -->|mentions| n3
-    n33 -->|mentions| n7
-    n27 -->|mentions| n22
-    n30 -->|mentions| n37
-    n31 -->|mentions| n29
-    n29 -->|authored| n36
-    n0 -->|sourced_from| n33
-    n14 -->|mentions| n39
-    n29 -->|works_on| n10
-    n0 -->|mentions| n37
-    n11 -->|mentions| n18
-    n20 -->|mentions| n19
-    n7 -->|mentions| n24
-    n30 -->|mentions| n22
-    n14 -->|mentions| n34
-    n25 -->|sourced_from| n34
-    n22 -->|depends_on| n26
-    n38 -->|mentions| n20
-    n8 -->|mentions| n34
-    n17 -->|mentions| n9
-    n14 -->|sourced_from| n36
-    n14 -->|sourced_from| n34
-    n29 -->|authored| n39
-    n33 -->|mentions| n5
-    n6 -->|mentions| n35
-    n28 -->|works_on| n21
-    n10 -->|mentions| n34
-    n22 -->|mentions| n18
-    n12 -->|mentions| n16
-    n37 -->|mentions| n13
-    n12 -->|sourced_from| n39
-    n6 -->|mentions| n8
-    n21 -->|sourced_from| n38
-    n28 -->|works_on| n25
-    n26 -->|mentions| n37
-    n5 -->|sourced_from| n30
-    n38 -->|mentions| n3
-    n27 -->|mentions| n10
-    n10 -->|mentions| n36
-    n28 -->|sourced_from| n30
-    n14 -->|sourced_from| n35
-    n9 -->|sourced_from| n38
-    n35 -->|mentions| n11
-    n26 -->|mentions| n13
-    n24 -->|mentions| n33
-    n10 -->|sourced_from| n34
-    n11 -->|sourced_from| n35
-    n14 -->|mentions| n31
-    n28 -->|mentions| n10
-    n10 -->|sourced_from| n31
-    n37 -->|mentions| n16
-    n2 -->|sourced_from| n38
-    n0 -->|mentions| n36
-    n29 -->|sourced_from| n35
-    n19 -->|sourced_from| n30
-    n29 -->|authored| n35
-    n37 -->|mentions| n38
-    n4 -->|mentions| n30
-    n29 -->|mentions| n39
-    n29 -->|works_on| n11
-    n2 -->|mentions| n21
-    n26 -->|sourced_from| n30
-    n22 -->|mentions| n30
-    n14 -->|mentions| n12
-    n0 -->|mentions| n35
-    n8 -->|sourced_from| n34
-    n7 -->|sourced_from| n33
-    n27 -->|mentions| n11
-    n22 -->|sourced_from| n37
-    n0 -->|sourced_from| n32
-    n19 -->|mentions| n30
-    n16 -->|sourced_from| n30
-    n12 -->|mentions| n3
-    n6 -->|mentions| n34
-    n31 -->|mentions| n10
-    n13 -->|mentions| n3
-    n31 -->|mentions| n0
-    n12 -->|mentions| n24
-    n18 -->|sourced_from| n30
-    n20 -->|sourced_from| n38
-    n35 -->|mentions| n17
-    n36 -->|mentions| n19
-    n21 -->|mentions| n15
-    n35 -->|mentions| n12
-    n3 -->|sourced_from| n38
-    n35 -->|mentions| n29
-    n7 -->|sourced_from| n36
-    n29 -->|mentions| n35
-    n12 -->|sourced_from| n37
-    n23 -->|sourced_from| n34
-    n14 -->|mentions| n35
-    n16 -->|sourced_from| n37
-    n9 -->|mentions| n30
-    n14 -->|mentions| n36
-    n34 -->|mentions| n25
-    n9 -->|sourced_from| n33
-    n17 -->|mentions| n12
-    n35 -->|mentions| n36
-    n25 -->|mentions| n27
-    n29 -->|works_on| n0
-    n12 -->|sourced_from| n36
-    n12 -->|mentions| n35
-    n13 -->|mentions| n37
-    n20 -->|mentions| n16
-    n27 -->|mentions| n34
-    n7 -->|mentions| n11
-    n22 -->|mentions| n13
-    n29 -->|authored| n31
-    n21 -->|mentions| n3
-    n1 -->|mentions| n32
-    n29 -->|mentions| n28
-    n13 -->|sourced_from| n37
-    n37 -->|mentions| n10
-    n28 -->|authored| n30
-    n10 -->|mentions| n27
-    n14 -->|sourced_from| n37
-    n7 -->|sourced_from| n35
-    n10 -->|mentions| n13
-    n7 -->|mentions| n33
-    n22 -->|mentions| n27
-    n0 -->|sourced_from| n34
-    n32 -->|mentions| n1
-    n3 -->|sourced_from| n37
-    n10 -->|sourced_from| n33
-    n6 -->|mentions| n25
-    n2 -->|mentions| n37
-    n3 -->|mentions| n2
-    n30 -->|mentions| n18
-    n38 -->|mentions| n21
-    n20 -->|mentions| n30
-    n25 -->|mentions| n23
-    n0 -->|mentions| n13
-    n6 -->|sourced_from| n35
-    n21 -->|depends_on| n15
-    n11 -->|sourced_from| n33
-    n18 -->|mentions| n27
-    n11 -->|sourced_from| n36
-    n26 -->|mentions| n30
-    n0 -->|mentions| n18
-    n8 -->|sourced_from| n30
-    n27 -->|mentions| n30
-    n23 -->|mentions| n25
-    n35 -->|mentions| n9
-    n38 -->|mentions| n15
-    n14 -->|sourced_from| n39
-    n12 -->|mentions| n19
-    n37 -->|mentions| n3
-    n11 -->|mentions| n36
-    n7 -->|mentions| n19
-    n9 -->|sourced_from| n35
-    n28 -->|mentions| n30
-    n27 -->|mentions| n25
-    n5 -->|mentions| n27
-    n25 -->|mentions| n8
-    n38 -->|mentions| n37
-    n0 -->|mentions| n27
-    n5 -->|mentions| n18
-    n34 -->|mentions| n28
-    n30 -->|mentions| n28
-    n28 -->|mentions| n38
-    n25 -->|depends_on| n8
-    n12 -->|sourced_from| n35
-    n14 -->|mentions| n10
-    n37 -->|mentions| n20
-    n26 -->|sourced_from| n37
-    n10 -->|mentions| n11
-    n18 -->|mentions| n30
-    n14 -->|mentions| n37
-    n29 -->|sourced_from| n39
-    n14 -->|sourced_from| n31
-    n29 -->|authored| n33
-    n20 -->|mentions| n36
-    n18 -->|mentions| n4
-    n11 -->|sourced_from| n39
-    n1 -->|sourced_from| n32
-    n21 -->|mentions| n13
-    n16 -->|mentions| n30
-    n4 -->|sourced_from| n30
-    n9 -->|sourced_from| n30
-    n28 -->|sourced_from| n37
-    n9 -->|mentions| n17
-    n5 -->|mentions| n33
-    n11 -->|mentions| n39
-    n30 -->|mentions| n26
-    n36 -->|mentions| n7
-    n7 -->|mentions| n9
-    n22 -->|sourced_from| n30
-    n17 -->|mentions| n35
-    n38 -->|mentions| n2
-    n28 -->|mentions| n11
-    n28 -->|authored| n32
-    n3 -->|mentions| n20
-    n11 -->|mentions| n24
-    n0 -->|mentions| n12
-    n33 -->|mentions| n11
-    n33 -->|mentions| n29
-    n28 -->|authored| n37
-    n29 -->|mentions| n31
-    n8 -->|mentions| n11
-    n8 -->|mentions| n18
-    n13 -->|mentions| n21
-    n19 -->|sourced_from| n36
+    n1["Benford's Law"]
+    n2["Bootstrapping simulation (for short histories)"]
+    n3["Convexity (return profile)"]
+    n4["Crisis alpha"]
+    n5["Delta hedging"]
+    n6["Hidden Markov models (in volatility forecasting)"]
+    n7["Look-ahead bias"]
+    n8["Machine learning for trading"]
+    n9["Market timing (monthly ETF strategies)"]
+    n10["Mean reversion (short-horizon equity)"]
+    n11["Minimum description length"]
+    n12["Model cycling"]
+    n13["Momentum"]
+    n14["Moving average filter"]
+    n15["Overfitting (and its detection)"]
+    n16["Parameter robustness"]
+    n17["Regime analysis"]
+    n18["Regime-conditional beta"]
+    n19["Research methodology (quant trading)"]
+    n20["Return autocorrelation (as trend-following driver)"]
+    n21["Risk-premia alpha"]
+    n22["RSI(2) mean-reversion engine"]
+    n23["Sector rotation"]
+    n24["Smart beta"]
+    n25["Statistical filtering (roll filter)"]
+    n26["Stock-bond correlation (regime risk)"]
+    n27["Tail risk hedging"]
+    n28["Trade selection (filtering vs ranking)"]
+    n29["Trend following"]
+    n30["Volatility carry strategies"]
+    n31["Volatility estimators"]
+    n32["Volatility filtering (timing gates)"]
+    n33["Volatility forecasting"]
+    n34["Volatility risk premia"]
+    n35["Volatility targeting"]
+    n36["Volume filters"]
+    n37["Artur Sepp"]
+    n38["Cesar Alvarez"]
+    n39["Allocation to systematic volatility strategies using VIX fut"]
+    n40["Benford's Law and Strategy Selection"]
+    n41["Developing systematic smart beta strategies for crypto asset"]
+    n42["Using Historical Volatility for Parameter Adjustment"]
+    n43["Machine Learning for Volatility Trading"]
+    n44["Sector Rotation Strategy: Should Trading Rules Make Sense?"]
+    n45["SPY, SSO and TLT Strategy"]
+    n46["Trend-Following CTAs vs Alternative Risk-Premia (ARP) produc"]
+    n47["Trend-following strategies for tail-risk hedging and alpha g"]
+    n48["Volume and Mean Reversion"]
+    n2 -->|mentions| n25
+    n33 -->|mentions| n42
+    n1 -->|mentions| n40
+    n3 -->|mentions| n27
+    n43 -->|mentions| n31
+    n23 -->|mentions| n16
     n17 -->|mentions| n7
-    n21 -->|mentions| n16
-    n14 -->|mentions| n38
-    n2 -->|sourced_from| n37
-    n38 -->|mentions| n28
-    n20 -->|sourced_from| n37
-    n21 -->|sourced_from| n37
-    n29 -->|mentions| n36
-    n10 -->|mentions| n0
-    n32 -->|mentions| n0
-    n21 -->|mentions| n2
-    n14 -->|mentions| n11
-    n7 -->|mentions| n36
-    n26 -->|mentions| n16
-    n36 -->|mentions| n29
-    n8 -->|mentions| n23
-    n24 -->|mentions| n36
-    n3 -->|sourced_from| n30
-    n34 -->|mentions| n6
-    n23 -->|mentions| n34
-    n10 -->|sourced_from| n35
-    n0 -->|mentions| n10
-    n9 -->|mentions| n7
-    n24 -->|sourced_from| n36
-    n28 -->|authored| n34
-    n20 -->|sourced_from| n30
-    n25 -->|mentions| n24
-    n0 -->|sourced_from| n31
-    n26 -->|mentions| n28
-    n15 -->|mentions| n13
-    n21 -->|mentions| n37
-    n6 -->|sourced_from| n34
-    n20 -->|mentions| n13
-    n25 -->|mentions| n34
-    n33 -->|mentions| n24
-    n9 -->|mentions| n33
-    n0 -->|mentions| n1
-    n29 -->|sourced_from| n33
-    n14 -->|sourced_from| n33
-    n30 -->|mentions| n27
-    n0 -->|mentions| n31
-    n18 -->|mentions| n24
-    n19 -->|mentions| n12
-    n6 -->|mentions| n10
-    n1 -->|mentions| n8
-    n16 -->|mentions| n13
-    n28 -->|mentions| n29
-    n21 -->|mentions| n9
-    n27 -->|sourced_from| n30
-    n3 -->|mentions| n37
-    n16 -->|mentions| n37
-    n30 -->|mentions| n38
-    n10 -->|sourced_from| n27
-    n26 -->|mentions| n22
-    n13 -->|mentions| n4
-    n12 -->|sourced_from| n38
+    n24 -->|mentions| n41
+    n5 -->|mentions| n25
+    n35 -->|sourced_from| n43
+    n32 -->|mentions| n25
+    n13 -->|mentions| n47
+    n38 -->|sourced_from| n40
+    n17 -->|mentions| n12
+    n0 -->|sourced_from| n48
+    n11 -->|mentions| n15
+    n12 -->|mentions| n44
+    n5 -->|sourced_from| n46
+    n32 -->|mentions| n18
+    n36 -->|sourced_from| n48
+    n17 -->|mentions| n46
+    n0 -->|mentions| n7
+    n48 -->|mentions| n38
+    n38 -->|mentions| n16
+    n4 -->|mentions| n47
+    n7 -->|mentions| n16
+    n1 -->|sourced_from| n40
+    n30 -->|mentions| n34
+    n16 -->|mentions| n42
+    n18 -->|mentions| n30
+    n37 -->|authored| n47
+    n43 -->|mentions| n11
+    n41 -->|mentions| n37
+    n36 -->|mentions| n28
+    n37 -->|sourced_from| n43
+    n33 -->|mentions| n15
+    n43 -->|mentions| n12
+    n36 -->|mentions| n16
+    n15 -->|mentions| n7
+    n39 -->|mentions| n5
+    n0 -->|sourced_from| n45
+    n19 -->|mentions| n25
+    n7 -->|mentions| n18
+    n9 -->|mentions| n44
+    n37 -->|mentions| n46
+    n26 -->|mentions| n45
+    n30 -->|mentions| n46
+    n1 -->|mentions| n15
+    n0 -->|mentions| n42
+    n29 -->|mentions| n47
+    n38 -->|mentions| n42
+    n47 -->|mentions| n35
+    n17 -->|sourced_from| n39
+    n19 -->|mentions| n7
+    n20 -->|mentions| n47
+    n14 -->|mentions| n48
+    n24 -->|mentions| n0
+    n31 -->|mentions| n12
+    n45 -->|mentions| n16
+    n17 -->|mentions| n16
+    n0 -->|sourced_from| n44
+    n11 -->|mentions| n43
+    n27 -->|mentions| n47
+    n35 -->|sourced_from| n47
+    n20 -->|sourced_from| n47
+    n39 -->|mentions| n4
+    n5 -->|mentions| n30
+    n18 -->|sourced_from| n39
+    n13 -->|mentions| n20
+    n37 -->|mentions| n43
+    n37 -->|mentions| n41
+    n24 -->|mentions| n2
+    n33 -->|sourced_from| n42
+    n18 -->|sourced_from| n47
+    n16 -->|mentions| n7
+    n7 -->|sourced_from| n42
+    n15 -->|sourced_from| n46
+    n20 -->|mentions| n12
+    n17 -->|mentions| n18
+    n3 -->|mentions| n47
+    n19 -->|mentions| n18
+    n3 -->|mentions| n5
+    n41 -->|mentions| n24
+    n20 -->|depends_on| n29
+    n43 -->|mentions| n6
+    n17 -->|mentions| n9
+    n38 -->|sourced_from| n45
+    n5 -->|mentions| n46
+    n16 -->|mentions| n44
+    n15 -->|mentions| n42
+    n38 -->|mentions| n15
+    n17 -->|sourced_from| n43
+    n45 -->|mentions| n32
+    n37 -->|sourced_from| n41
+    n17 -->|mentions| n20
+    n46 -->|mentions| n37
+    n48 -->|mentions| n28
+    n2 -->|mentions| n0
+    n12 -->|mentions| n15
+    n11 -->|sourced_from| n43
+    n5 -->|mentions| n27
+    n7 -->|mentions| n39
+    n23 -->|sourced_from| n44
+    n4 -->|mentions| n39
+    n30 -->|mentions| n5
+    n32 -->|sourced_from| n42
+    n44 -->|mentions| n9
+    n37 -->|works_on| n30
+    n40 -->|mentions| n1
+    n37 -->|sourced_from| n47
+    n15 -->|mentions| n46
+    n3 -->|mentions| n4
+    n42 -->|mentions| n9
+    n35 -->|mentions| n30
+    n39 -->|mentions| n46
+    n40 -->|mentions| n38
+    n38 -->|authored| n45
+    n0 -->|sourced_from| n42
+    n19 -->|mentions| n48
+    n38 -->|works_on| n15
+    n0 -->|mentions| n46
+    n16 -->|mentions| n25
+    n27 -->|mentions| n26
+    n9 -->|mentions| n32
+    n39 -->|mentions| n30
+    n19 -->|mentions| n43
+    n33 -->|sourced_from| n43
+    n30 -->|depends_on| n34
+    n47 -->|mentions| n27
+    n12 -->|mentions| n43
+    n23 -->|mentions| n13
+    n19 -->|sourced_from| n45
+    n19 -->|sourced_from| n43
+    n38 -->|authored| n48
+    n42 -->|mentions| n7
+    n8 -->|mentions| n44
+    n37 -->|works_on| n29
+    n15 -->|mentions| n43
+    n30 -->|mentions| n25
+    n17 -->|mentions| n21
+    n46 -->|mentions| n18
+    n24 -->|sourced_from| n41
+    n17 -->|sourced_from| n48
+    n8 -->|mentions| n12
+    n29 -->|sourced_from| n47
+    n37 -->|works_on| n33
+    n34 -->|mentions| n46
+    n7 -->|sourced_from| n39
+    n47 -->|mentions| n4
+    n35 -->|mentions| n15
+    n15 -->|mentions| n45
+    n37 -->|sourced_from| n39
+    n19 -->|sourced_from| n44
+    n13 -->|sourced_from| n47
+    n44 -->|mentions| n16
+    n34 -->|mentions| n18
+    n32 -->|mentions| n42
+    n15 -->|sourced_from| n43
+    n16 -->|sourced_from| n44
+    n19 -->|mentions| n40
+    n37 -->|mentions| n15
+    n15 -->|sourced_from| n40
+    n46 -->|mentions| n21
+    n3 -->|sourced_from| n47
+    n0 -->|mentions| n45
+    n38 -->|sourced_from| n44
+    n26 -->|sourced_from| n39
+    n38 -->|authored| n44
+    n6 -->|mentions| n31
+    n46 -->|mentions| n47
+    n5 -->|mentions| n39
+    n38 -->|mentions| n48
+    n19 -->|mentions| n11
+    n38 -->|works_on| n16
+    n3 -->|mentions| n29
+    n34 -->|sourced_from| n39
+    n30 -->|mentions| n39
+    n19 -->|mentions| n17
+    n10 -->|mentions| n28
+    n0 -->|mentions| n44
+    n12 -->|sourced_from| n43
+    n9 -->|sourced_from| n42
+    n35 -->|mentions| n16
+    n30 -->|sourced_from| n46
+    n0 -->|sourced_from| n41
+    n26 -->|mentions| n39
+    n21 -->|sourced_from| n39
+    n17 -->|mentions| n4
+    n8 -->|mentions| n43
+    n36 -->|mentions| n48
+    n40 -->|mentions| n15
+    n18 -->|mentions| n4
+    n10 -->|sourced_from| n48
+    n40 -->|mentions| n0
+    n17 -->|mentions| n32
+    n25 -->|sourced_from| n39
+    n27 -->|sourced_from| n47
+    n28 -->|mentions| n1
+    n44 -->|mentions| n23
+    n45 -->|mentions| n26
+    n29 -->|mentions| n20
+    n44 -->|mentions| n17
+    n4 -->|sourced_from| n47
+    n44 -->|mentions| n38
+    n9 -->|sourced_from| n45
+    n28 -->|sourced_from| n40
+    n38 -->|mentions| n44
+    n17 -->|sourced_from| n46
+    n31 -->|sourced_from| n43
+    n19 -->|mentions| n44
+    n21 -->|sourced_from| n46
+    n48 -->|mentions| n10
+    n13 -->|mentions| n39
+    n19 -->|mentions| n45
+    n28 -->|mentions| n16
+    n43 -->|mentions| n33
+    n13 -->|sourced_from| n42
+    n23 -->|mentions| n17
+    n44 -->|mentions| n45
+    n33 -->|mentions| n35
+    n38 -->|works_on| n0
+    n17 -->|sourced_from| n45
+    n17 -->|mentions| n44
+    n22 -->|sourced_from| n48
+    n18 -->|mentions| n46
+    n14 -->|sourced_from| n45
+    n27 -->|mentions| n21
+    n35 -->|mentions| n43
+    n9 -->|mentions| n16
+    n30 -->|mentions| n18
+    n38 -->|authored| n40
+    n29 -->|mentions| n4
+    n2 -->|mentions| n41
+    n38 -->|mentions| n37
+    n18 -->|sourced_from| n46
+    n46 -->|mentions| n15
+    n48 -->|mentions| n22
+    n37 -->|authored| n39
+    n15 -->|mentions| n35
+    n14 -->|mentions| n16
+    n15 -->|mentions| n1
+    n19 -->|sourced_from| n46
+    n9 -->|sourced_from| n44
+    n15 -->|mentions| n18
+    n9 -->|mentions| n42
+    n30 -->|mentions| n35
+    n0 -->|sourced_from| n43
+    n41 -->|mentions| n2
+    n4 -->|sourced_from| n46
+    n15 -->|sourced_from| n42
+    n8 -->|mentions| n33
+    n3 -->|mentions| n46
+    n11 -->|mentions| n33
+    n4 -->|mentions| n3
+    n39 -->|mentions| n25
+    n47 -->|mentions| n29
+    n27 -->|mentions| n39
+    n24 -->|depends_on| n2
+    n33 -->|mentions| n31
+    n22 -->|mentions| n48
+    n0 -->|mentions| n18
+    n8 -->|sourced_from| n44
+    n29 -->|depends_on| n20
+    n16 -->|sourced_from| n42
+    n25 -->|mentions| n35
+    n16 -->|sourced_from| n45
+    n34 -->|mentions| n39
+    n17 -->|mentions| n14
+    n0 -->|mentions| n25
+    n14 -->|sourced_from| n48
+    n12 -->|sourced_from| n39
+    n35 -->|mentions| n39
+    n31 -->|mentions| n33
+    n44 -->|mentions| n13
+    n47 -->|mentions| n20
+    n15 -->|mentions| n11
+    n10 -->|mentions| n16
+    n19 -->|sourced_from| n48
+    n17 -->|mentions| n26
+    n46 -->|mentions| n4
+    n16 -->|mentions| n45
+    n9 -->|mentions| n26
+    n13 -->|sourced_from| n44
+    n8 -->|mentions| n11
+    n37 -->|mentions| n39
+    n35 -->|mentions| n33
+    n7 -->|mentions| n35
+    n33 -->|mentions| n12
+    n47 -->|mentions| n46
+    n0 -->|mentions| n35
+    n7 -->|mentions| n25
+    n43 -->|mentions| n37
+    n39 -->|mentions| n37
+    n37 -->|mentions| n47
+    n48 -->|mentions| n36
+    n33 -->|depends_on| n12
+    n9 -->|mentions| n14
+    n17 -->|sourced_from| n44
+    n6 -->|mentions| n12
+    n19 -->|mentions| n15
+    n46 -->|mentions| n27
+    n34 -->|sourced_from| n46
+    n15 -->|mentions| n16
+    n25 -->|mentions| n39
+    n19 -->|mentions| n46
+    n38 -->|sourced_from| n48
+    n19 -->|sourced_from| n40
+    n38 -->|authored| n42
+    n27 -->|mentions| n45
+    n25 -->|mentions| n5
+    n16 -->|sourced_from| n48
+    n2 -->|sourced_from| n41
+    n29 -->|mentions| n18
+    n14 -->|mentions| n45
+    n21 -->|mentions| n39
+    n5 -->|sourced_from| n39
+    n13 -->|sourced_from| n39
+    n37 -->|works_on| n24
+    n37 -->|sourced_from| n46
+    n13 -->|mentions| n23
+    n7 -->|mentions| n42
+    n17 -->|mentions| n10
+    n16 -->|mentions| n48
+    n6 -->|mentions| n18
+    n39 -->|mentions| n34
+    n45 -->|mentions| n9
+    n9 -->|mentions| n13
+    n30 -->|sourced_from| n39
+    n23 -->|mentions| n44
+    n47 -->|mentions| n3
+    n37 -->|mentions| n16
+    n37 -->|authored| n41
+    n4 -->|mentions| n27
+    n16 -->|mentions| n32
+    n0 -->|mentions| n17
+    n42 -->|mentions| n16
+    n42 -->|mentions| n38
+    n37 -->|authored| n46
+    n28 -->|mentions| n48
+    n38 -->|mentions| n40
+    n12 -->|mentions| n16
+    n12 -->|mentions| n25
+    n18 -->|mentions| n29
+    n26 -->|sourced_from| n45
+    n17 -->|mentions| n6
+    n23 -->|mentions| n9
+    n29 -->|mentions| n21
+    n19 -->|mentions| n47
+    n3 -->|sourced_from| n46
+    n47 -->|mentions| n37
+    n28 -->|sourced_from| n48
+    n27 -->|sourced_from| n46
+    n29 -->|sourced_from| n46
+    n38 -->|mentions| n45
+    n15 -->|mentions| n0
+    n41 -->|mentions| n0
+    n29 -->|mentions| n3
+    n19 -->|mentions| n16
+    n9 -->|mentions| n45
+    n34 -->|mentions| n21
+    n10 -->|mentions| n48
+    n45 -->|mentions| n38
+    n1 -->|mentions| n19
+    n12 -->|mentions| n31
+    n33 -->|mentions| n6
+    n32 -->|mentions| n45
+    n6 -->|mentions| n43
+    n4 -->|sourced_from| n39
+    n43 -->|mentions| n8
+    n31 -->|mentions| n43
+    n15 -->|sourced_from| n44
+    n0 -->|mentions| n15
+    n10 -->|mentions| n22
+    n13 -->|mentions| n9
+    n32 -->|sourced_from| n45
+    n37 -->|authored| n43
+    n45 -->|mentions| n14
+    n27 -->|sourced_from| n39
+    n6 -->|sourced_from| n43
+    n33 -->|mentions| n32
+    n24 -->|mentions| n15
+    n0 -->|sourced_from| n40
+    n22 -->|mentions| n10
+    n34 -->|mentions| n37
+    n20 -->|mentions| n18
+    n29 -->|mentions| n46
+    n8 -->|sourced_from| n43
+    n27 -->|mentions| n18
+    n33 -->|mentions| n43
+    n42 -->|mentions| n32
+    n13 -->|mentions| n42
+    n0 -->|mentions| n2
+    n38 -->|sourced_from| n42
+    n19 -->|sourced_from| n42
+    n39 -->|mentions| n35
+    n0 -->|mentions| n40
+    n25 -->|mentions| n32
+    n26 -->|mentions| n17
+    n8 -->|mentions| n15
+    n2 -->|mentions| n12
+    n21 -->|mentions| n18
+    n37 -->|mentions| n38
+    n29 -->|mentions| n13
+    n35 -->|sourced_from| n39
+    n4 -->|mentions| n46
+    n21 -->|mentions| n46
+    n39 -->|mentions| n47
+    n15 -->|sourced_from| n35
+    n34 -->|mentions| n30
+    n18 -->|mentions| n5
+    n17 -->|sourced_from| n47
     classDef cconcept fill:#4a90d9
-    class n0 n1 n2 n3 n4 n5 n6 n7 n8 n9 n10 n11 n12 n13 n14 n15 n16 n17 n18 n19 n20 n21 n22 n23 n24 n25 n26 n27 cconcept
+    class n0 n1 n2 n3 n4 n5 n6 n7 n8 n9 n10 n11 n12 n13 n14 n15 n16 n17 n18 n19 n20 n21 n22 n23 n24 n25 n26 n27 n28 n29 n30 n31 n32 n33 n34 n35 n36 cconcept
     classDef cperson fill:#bd10e0
-    class n28 n29 cperson
+    class n37 n38 cperson
     classDef csource fill:#f5a623
-    class n30 n31 n32 n33 n34 n35 n36 n37 n38 n39 csource
+    class n39 n40 n41 n42 n43 n44 n45 n46 n47 n48 csource

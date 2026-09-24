@@ -15,7 +15,11 @@ Nothing is recomputed from markdown here: graph.sqlite rows are the extract
 output; this script only *presents* them.
 
 Usage:
-    uv run --script wiki_graph_visualize.py wiki/ [--node-limit 40] [--out DIR] [--json]
+    uv run --script wiki_graph_visualize.py wiki/ [--node-limit N] [--out DIR] [--json]
+
+    --node-limit N keeps only the N highest-degree nodes (0 = full graph,
+    the default). Capping is only useful for large wikis where a full
+    Mermaid/vis render would be unreadable.
 """
 
 import argparse
@@ -68,7 +72,9 @@ def load_graph(wiki_root: str):
 
 
 def top_nodes(nodes: list[dict], edges: list[dict], cap: int):
-    """Top-N nodes by edge degree + only edges between kept nodes."""
+    """Top-N nodes by edge degree + only edges between kept nodes. cap<=0 keeps all."""
+    if cap <= 0:
+        return list(nodes), list(edges)
     degree = collections.Counter()
     for e in edges:
         degree[e["subject"]] += 1
@@ -150,7 +156,12 @@ const edges_ds = new vis.DataSet(DATA.edges.map((e) => ({
     color: { color: e.confidence === "high" ? "#2b7a3d" : "#b9b9b9", opacity: 0.85 },
 })));
 const net = new vis.Network(container, { nodes: nodes_ds, edges: edges_ds }, {
-    groups: { source: "#f5a623", concept: "#4a90d9", entity: "#7ed321", person: "#bd10e0" },
+    groups: {
+        source:  { color: "#f5a623" },
+        concept: { color: "#4a90d9" },
+        entity:  { color: "#7ed321" },
+        person:  { color: "#bd10e0" },
+    },
     physics: { solver: "barnesHut", barnesHut: { springLength: 140 } },
     interaction: { hover: true, tooltipDelay: 250 },
 });
@@ -160,15 +171,16 @@ net.on("click", (params) => {
     const id = params.nodes[0];
     const mine = DATA.edges.filter((e) => e.subject === id || e.target === id);
     const node = NODE_LOOKUP[id];
+    const dir = (e) => e.subject === id ? `→ ${e.predicate} → ${TARGETS[e.target] || e.target}`
+                                        : `← ${e.predicate} ← ${TARGETS[e.subject] || e.subject}`;
     detail.innerHTML =
-        `<b>${node.label}</b><br/><i>${node.group}</i> — ${node.id}<br/><br/>` +
-        `<u>Typed edges (${mine.length})</u><br/>` +
-        mine.map((ite) => `· ${item_meta(ite, id).toString()}`).join("<br/>");
+        `<b>${node.label}</b> <i>(${node.group})</i><br/>` +
+        `<span style="color:#555">${node.id}${node.path ? ` · wiki/${node.path}` : ""}</span><br/><br/>` +
+        `<u>Edges (${mine.length})</u><br/>` +
+        mine.map((e) => `· ${dir(e)}${e.confidence ? ` <i>[${e.confidence}]</i>` : ""}`).join("<br/>");
     detail.style.display = "block";
 });
-function typed(ite) {
-    return `[${ite}]`;
-}
+const TARGETS = Object.fromEntries(DATA.nodes.map((n) => [n.id, n.label]));
 const NODE_LOOKUP = Object.fromEntries(DATA.nodes.map((n) => [n.id, n]));
 document.getElementById("search").addEventListener("input", (ev) => {
     const q = ev.target.value.toLowerCase();
@@ -176,7 +188,6 @@ document.getElementById("search").addEventListener("input", (ev) => {
         (n) => !q || n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q)
     );
     const keepids = new Set(kept.map((n) => n.id));
-    nodes_ds.only({});
     nodes_ds.forEach((nd) => { nodes_ds.update({ id: nd.id, hidden: !keepids.has(nd.id) }); });
 });
 </script>
@@ -187,9 +198,18 @@ document.getElementById("search").addEventListener("input", (ev) => {
     return out
 
 
-def main(wiki_root: str = "wiki", node_limit: int = 40, out_dir: str | None = None):
+def main(wiki_root: str = "wiki", node_limit: int = 0, out_dir: str | None = None):
     out_path = out_dir or os.path.join(wiki_root, "graph")
     nodes, edges = load_graph(wiki_root)
+    # Edges may point outside the node set (summarizes_raw targets raw file
+    # paths, not wiki nodes). Rendering them creates ghost nodes, so omit
+    # them from the visuals — the data stays intact in sqlite/jsonl.
+    ids = {n["id"] for n in nodes}
+    external = [e for e in edges if e["subject"] not in ids or e["target"] not in ids]
+    if external:
+        edges = [e for e in edges if e["subject"] in ids and e["target"] in ids]
+        print(f"  note: {len(external)} edges point outside the node set "
+              f"(summarizes_raw → raw file paths) — omitted from the visuals")
     keep_nodes, kept_edges = top_nodes(nodes, edges, cap=node_limit)
     mm = write_mermaid(out_path, keep_nodes, kept_edges)
     html = write_html(out_path, keep_nodes, kept_edges)
@@ -203,7 +223,8 @@ if __name__ == "__main__":
     import sys
     ap = argparse.ArgumentParser(description="Visualize the compiled wiki graph (Mermaid + interactive HTML)")
     ap.add_argument("wiki_root", nargs="?", default="wiki")
-    ap.add_argument("--node-limit", type=int, default=40)
+    ap.add_argument("--node-limit", type=int, default=0,
+                    help="keep only the N highest-degree nodes (0 = full graph)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     main(a.wiki_root, a.node_limit, a.out)
