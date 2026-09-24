@@ -65,7 +65,7 @@ Use a plain `[[wikilink]]` when:
 
 When in doubt, write the wikilink and skip the typed edge. The lint surfaces missing evidence; it does not punish under-claiming.
 
-## Extract / lint / query loop
+## Extract / lint / query / visualize loop
 
 ```bash
 # Validate the typed metadata first; lint is conservative, never edits.
@@ -79,6 +79,13 @@ python scripts/wiki_graph_query.py wiki/ neighbors --node product:konvy
 python scripts/wiki_graph_query.py wiki/ edges    --subject person:stephanie-emmanouel
 python scripts/wiki_graph_query.py wiki/ path     --from person:praney-behl --to product:konvy
 python scripts/wiki_graph_query.py wiki/ facts    --about product:konvy
+
+# Present: two regenerable views of the compiled graph (no new deps).
+#   graph-overview.mmd — Mermaid flowchart (Obsidian / GitHub render inline)
+#   index.html         — self-contained interactive page (vis-network via CDN:
+#                        live title filter, click = typed-edge provenance)
+# Top-N nodes by edge degree (default 40); raise --node-limit for full coverage.
+uv run --script scripts/wiki_graph_visualize.py wiki/ --node-limit 40   # -> wiki/graph/graph-overview.mmd + index.html
 ```
 
 `--json` works on both lint and query commands.
@@ -91,6 +98,7 @@ After Step 6 of the standard ingest workflow (after surgical updates and source 
 2. Run `wiki_graph_extract.py` to refresh the compiled artifacts.
 3. Append a sub-line under the ingest's `log.md` entry:
    `   graph: +N nodes, +M typed edges (predicates: founded, contains_product, ...)`
+3. Optional: regenerate the two visual views with `wiki_graph_visualize.py wiki/` so `graph-overview.mmd` and `index.html` stay current.
 
 Skip both if the page being ingested has no `graph.relationships[]` and no new pages were created — the graph layer is unchanged.
 
@@ -100,6 +108,7 @@ When the user asks a question that smells relational ("what's connected to X", "
 
 1. Read the index as usual.
 2. If `wiki/graph/graph.sqlite` exists and is fresher than the latest log entry, query it for typed edges around the candidate pages — `neighbors`, `edges`, `facts` are the most useful.
+2b. For interactive probing, `uv run --script scripts/wiki_graph_visualize.py wiki/` regenerates `wiki/graph/index.html` — a single HTML that searches node titles and lists each node's typed edges (offline-friendly, opens in a browser).
 3. Read the wiki pages behind the relevant nodes/edges. Don't answer from graph rows alone for high-stakes claims; the `evidence` field is a hint, not the source of truth.
 4. Cite with `[[wikilinks]]` to wiki pages, not graph rows.
 
@@ -114,6 +123,8 @@ If `graph.sqlite` is stale (older than the most recent ingest in `log.md`), rege
 | `wiki/graph/edges.jsonl` | Generated | Same as above |
 | `wiki/graph/graph.sqlite` | Generated | **Gitignored** by default (large, binary) |
 | `wiki/graph/graph.graphml` | Generated | **Gitignored** by default |
+| `wiki/graph/graph-overview.mmd` | Generated (visual) | Tracked — Mermaid renders inline in Obsidian/GitHub diffs |
+| `wiki/graph/index.html` | Generated (visual) | Optional — self-contained interactive viewer; keep local, or track for a hosted copy |
 
 The bootstrapped `wiki/graph/.gitignore` ignores `graph.sqlite` and `graph.graphml`. Edit it if your team prefers different policy.
 
