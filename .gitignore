@@ -22,6 +22,8 @@ sessions.db-*
 # Skills: folder shell tracked via .gitkeep; live skills stay local-only
 skills/*
 !skills/.gitkeep
+!skills/llm-wiki/
+!skills/llm-wiki/**
 
 # Memory files are tracked as empty placeholders; local agent-curated content
 # is hidden from git via skip-worktree (see CLAUDE.md).
