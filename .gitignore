@@ -40,3 +40,6 @@ llm-wiki/*
 # raw/: personal research clippings; local-only, folder shell committed
 /raw/*
 !/raw/.gitkeep
+
+# Python bytecode inside skill scripts (gitignored at the repo level)
+skills/**/__pycache__/

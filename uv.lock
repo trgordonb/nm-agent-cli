@@ -2009,7 +2009,7 @@ wheels = [
 [[package]]
 name = "nm-memory-layer"
 version = "0.1.0"
-source = { git = "https://github.com/trgordonb/nm-memory-layer?branch=main#45b3647bf603ecf0efbf26c0706bb8e454175a18" }
+source = { git = "https://github.com/trgordonb/nm-memory-layer?branch=main#72deeb65cc302bb70444d51c773d24a211ccf7e5" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langchain-openai" },
