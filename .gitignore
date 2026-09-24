@@ -41,5 +41,9 @@ llm-wiki/*
 /raw/*
 !/raw/.gitkeep
 
+# Obsidian config (created on vault open) — local-only
+wiki/.obsidian/
+.obsidian/
+
 # Python bytecode inside skill scripts (gitignored at the repo level)
 skills/**/__pycache__/
