@@ -16,9 +16,34 @@ The slug you pick here will become the slug of the source-summary page in `wiki/
 
 For short sources (under ~5,000 words / ~25,000 tokens), read the whole thing in one pass.
 
-For long sources (papers over ~30 pages, book chapters, multi-hour transcripts), **chunk-read**: read the table of contents or section headers first to build a mental map, then read sections sequentially, summarizing each section in working memory before moving to the next. Do not load the entire raw source into context at once if it would consume more than ~25% of your context window — that leaves no room for the rest of the operation.
+For long sources (papers over ~30 pages, book chapters, multi-hour transcripts), **chunk-read**: build a section map first, then read sections sequentially, summarizing each section in working memory before moving to the next. Do not load the entire raw source into context at once if it would consume more than ~25% of your context window — that leaves no room for the rest of the operation.
 
-For PDFs specifically, prefer the `pdf-reading` skill if available (it handles the chunking automatically). Otherwise extract text first with `pdftotext` or `pdfminer` and then chunk-read the extracted text.
+### Chunk-reading with lilmd (preferred when available)
+
+[`lilmd`](https://github.com/molefrog/lilmd) is an agent-friendly CLI for navigating large markdown files without loading them whole (handles 100MB+). Check availability with `command -v lilmd`; install with `npm install -g lilmd` when missing. If it is not available and cannot be installed, fall back to manual chunk-reading via `Read` with line offsets — the discipline is identical, just hand-rolled.
+
+With lilmd, the chunk-read loop is mechanical:
+
+1. **Section map:** `lilmd toc raw/<source>.md --depth 3` prints every heading with its line range (`# 3 Methodology  L87-152`). Line ranges give you per-section sizes: a range spanning >500 lines should itself be chunk-read subsection by subsection; ranges of a few lines can be skimmed together.
+2. **Sequential reads:** `lilmd read raw/<source>.md "<section title>" --body-only` prints one section's body. Work through the map in document order, summarizing each section before moving on. `--max-lines` truncates pathological sections; `--json` gives machine-readable output when a script is driving.
+3. **Targeted discovery:** `lilmd grep raw/<source>.md "<pattern>"` attributes regex hits to their sections — use it when the user cares about a specific topic inside a huge source ("only ingest the risk-management parts"), so the chunk plan starts from the relevant sections instead of page one.
+4. **Structure sanity:** `lilmd ls raw/<source>.md "<section>"` lists subsections without bodies — cheap orientation inside very deep documents.
+
+**Guardrail: `raw/` is immutable.** lilmd also carries write commands (`set`, `append`, `insert`, `rm`, `rename`, `mv`, `promote`, `demote`) — never run them against a file in `raw/`. They are for the wiki layer only, if at all (prefer `str_replace` for surgical wiki edits).
+
+**Resuming a multi-session ingest of a huge source.** Record progress in the source-summary page's frontmatter so the next session can continue instead of restarting:
+
+```yaml
+ingest_progress:
+  source_hash: "9f2b1c…"        # shasum -a 256 raw/<source>.md at ingest start
+  sections_total: 46            # from lilmd toc
+  last_completed: "5.1 Single-Factor Portfolios"
+  next: "5.2 Multi-Factor Portfolios"
+```
+
+On resume: re-hash the raw file (changed hash means the source moved under you — confirm with the user before continuing), re-run `lilmd toc`, and continue from `next`. Clear `ingest_progress` when the ingest completes.
+
+For PDFs specifically, prefer the `pdf-reading` skill if available (it handles the chunking automatically). Otherwise extract text first with `pdftotext` or `pdfminer` and then chunk-read the extracted text — lilmd works identically on the extracted markdown.
 
 For images embedded in the source: read the surrounding text first, then view only the images that the text suggests are load-bearing (a chart referenced in an argument, a diagram of a system, a figure the source explicitly walks through). Don't blindly load every image — many are decorative.
 
@@ -116,7 +141,7 @@ If the source revealed something worth following up on (an obvious gap, a questi
 
 ## Anti-patterns to avoid
 
-**Loading the whole source into context at once when it's large.** This is the most common scaling failure. Chunk-read.
+**Loading the whole source into context at once when it's large.** This is the most common scaling failure. Chunk-read — with `lilmd toc` + `lilmd read` when available (see Step 2), manual line-offset reads otherwise.
 
 **Rewriting whole pages instead of surgical edits.** This burns tokens, risks losing nuance, and erodes diff quality if the wiki is in git.
 
