@@ -159,6 +159,7 @@ around the wall.
 | `raw LaTeX environment outside $$` warning | An environment the recovery pass didn't wrap | Wrap it in `$$\n...\n$$`; rewrite `eqnarray` to `aligned` while you're there |
 | Fences contain `<span class="token">` junk | Input was a browser-saved DOM with highlighter markup | Expected input for the script — but if a block still has spans, strip them keeping text content |
 | `missing media file: media/...` | Image download failed | Re-download by hand or replace with the absolute URL (it's in the md) |
+| Content images missing but figure captions remain (report shows far fewer images than captions) | Lazy-loading: real URL sits in `data-src`/`data-lazy-src`/`data-original`, `src` is a 1×1 placeholder SVG | Fixed in-script: lazy URLs are preferred over a placeholder `src` automatically. Manual fallback for exotic variants: grep `raw.html` for `data-src="...png/jpg"` near each caption, `curl` each URL into `media/` with a browser UA, then insert `![alt](media/f.png)` before its caption |
 
 ## Known limitations
 

@@ -606,7 +606,17 @@ def handle_images(container: Tag, base_url: str | None, media_dir: Path,
     media_dir.mkdir(parents=True, exist_ok=True)
 
     for img in list(container.find_all("img")):
-        src = img.get("src") or img.get("data-src") or ""
+        # Lazy-loading: the real URL sits in a data-* attribute while src is a
+        # 1x1 placeholder (observed on interactivebrokers.com: src="data:image/
+        # svg+xml;base64,PHN2ZyB3aWR0aD0iMSI..." data-src="...figure.png").
+        # Picking src first used to drop every content figure.
+        src = img.get("src") or ""
+        lazy = (img.get("data-src") or img.get("data-lazy-src")
+                or img.get("data-original") or "")
+        rescued = False
+        if lazy and (not src or src.startswith("data:")):
+            src = lazy
+            rescued = True
         img_attrs = " ".join(filter(None, [
             " ".join(img.get("class") or []), img.get("alt", ""), src, img.get("id", ""),
         ]))
@@ -647,7 +657,7 @@ def handle_images(container: Tag, base_url: str | None, media_dir: Path,
             img.decompose()
             dropped += 1
             continue
-        if IMG_JUNK_PAT.search(img_attrs) or tiny:
+        if IMG_JUNK_PAT.search(img_attrs) or (tiny and not rescued):
             img.decompose()
             dropped += 1
             continue
