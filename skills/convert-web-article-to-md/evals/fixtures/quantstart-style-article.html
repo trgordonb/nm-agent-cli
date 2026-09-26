@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mean-Reverting Spread Simulation with Python | QuantBlog</title>
+<meta property="og:title" content="Mean-Reverting Spread Simulation with Python | QuantBlog">
+<meta name="description" content="A synthetic fixture article mixing loose TeX display math, inline \( \) math, Prism code blocks, prose currency, and site chrome.">
+<meta name="author" content="Fixture Author">
+<meta property="article:published_time" content="2026-08-14T09:00:00Z">
+<link rel="canonical" href="https://www.quantblog.example/articles/mean-reverting-spread-simulation-with-python">
+</head>
+<body>
+<nav class="site-nav"><a href="/">Home</a> <a href="/articles">Articles</a> <a href="/pricing">Pricing</a></nav>
+<div class="cookie-banner">This site uses cookies. Accept all cookies to continue.</div>
+<div class="advert-banner"><img src="/static/ads/sidebar-advert-small.png" alt="Advert" class="advert"></div>
+
+<article class="post-content">
+  <h1>Mean-Reverting Spread Simulation with Python | QuantBlog</h1>
+  <p class="post-meta">By Fixture Author — 14 August 2026</p>
+
+  <p>Pairs trading assumes the spread between two cointegrated assets is
+  stationary. Let the spread \( S_t \) follow an Ornstein-Uhlenbeck process
+  with mean reversion speed \( \theta \). The SDE is given by:</p>
+
+  \begin{eqnarray}
+  dS_t = \theta (\mu - S_t) dt + \sigma dW_t
+  \end{eqnarray}
+
+  <p>Here, \( S_t \) is the spread at time \( t \), \( \mu \) is the long-term
+  mean, \( \theta &gt; 0 \) controls the speed of reversion, and \( \sigma \)
+  is the volatility. If your account sizes range from $5,000 to $10,000 the
+  model still applies, since \( \theta \) is scale-free.</p>
+
+  <p>The Euler-Maruyama discretisation with time step \( \Delta t \) is:</p>
+
+  \begin{eqnarray}
+  S_{t+\Delta t} = S_t + \theta (\mu - S_t) \Delta t + \sigma \sqrt{\Delta t}\, \epsilon_t
+  \end{eqnarray}
+
+  <h2>Python Implementation</h2>
+
+  <p>We pre-allocate an array of length \( N \) and iterate \( N-1 \) steps:</p>
+
+  <pre><code class="language-python">import numpy as np
+
+theta, mu, sigma = 0.7, 0.0, 0.3
+N = 1000
+S = np.zeros(N)
+for t in range(1, N):
+    if S[t-1] &lt; mu &amp;&amp; t % 2 == 0:
+        dW = np.sqrt(1.0/N) * np.random.normal(0, 1)
+    S[t] = S[t-1] + theta * (mu - S[t-1]) / N + sigma * dW
+print("spread path:", S[:5])</code></pre>
+
+  <p>The resulting simulated path is plotted below:</p>
+
+  <figure>
+    <img src="https://www.quantblog.example/img/ou-spread-plot.png" alt="Simulated mean-reverting spread path" width="720">
+    <figcaption>Simulated OU spread path reverting to $\mu = 0$.</figcaption>
+  </figure>
+
+  <h2>Summary</h2>
+  <p>The OU process provides a tractable model for mean-reverting spreads and
+  underpins statistical arbitrage strategies in systematic trading.</p>
+</article>
+
+<aside class="sidebar-related">
+  <h3>Related Posts</h3>
+  <ul><li><a href="/articles/cointegration">Cointegration for Beginners</a></li></ul>
+</aside>
+<div class="newsletter-subscribe">Subscribe to our newsletter for weekly quant articles!</div>
+<footer class="site-footer">© 2026 QuantBlog. All rights reserved.</footer>
+</body>
+</html>

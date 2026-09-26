@@ -24,6 +24,8 @@ skills/*
 !skills/.gitkeep
 !skills/llm-wiki/
 !skills/llm-wiki/**
+!skills/convert-web-article-to-md/
+!skills/convert-web-article-to-md/**
 
 # Memory files are tracked as empty placeholders; local agent-curated content
 # is hidden from git via skip-worktree (see CLAUDE.md).

@@ -1,0 +1,54 @@
+{
+  "skill_name": "convert-web-article-to-md",
+  "evals": [
+    {
+      "id": 0,
+      "name": "quantstart-ou-url-to-markdown",
+      "prompt": "Convert https://www.quantstart.com/articles/ornstein-uhlenbeck-simulation-with-python into a markdown file I can feed to my AI agents later. The math and the Python code need to survive — last converter I tried lost all the equations.",
+      "expected_output": "A markdown file of the OU article with front-matter provenance, native $$...$$ LaTeX for the SDE and its solution, inline $X_t$-style math, language-tagged Python fences (including the Full Code listing), the simulation plot downloaded to media/, and no site chrome.",
+      "files": [],
+      "expectations": [
+        "A markdown file exists in the outputs directory with substantial content (at least 4000 characters)",
+        "YAML front matter is present with source: https://www.quantstart.com/articles/ornstein-uhlenbeck-simulation-with-python and a title that does NOT carry a '| QuantStart' suffix",
+        "Display math survived: the SDE appears inside $$ delimiters as LaTeX (contains \\theta (\\mu - X_t) dt + \\sigma dW_t), with no \\begin{eqnarray} left outside $$ blocks",
+        "Inline math survived: at least 20 $...$ spans such as $X_t$, $\\mu$, $\\theta$, and none of the broken-sentence symptoms ('at time , is the long-term mean' with the symbol missing)",
+        "The Python simulation appears as a fenced ```python block containing np.random.normal, including the final 'Full Code' listing",
+        "The simulation plot is referenced from the markdown either as a downloaded media/ file or as an absolute image URL (not silently dropped)",
+        "No site chrome leaked into the output: no 'Quantcademy', no cookie/subscribe/advert boilerplate",
+        "No unconverted \\( or \\[ markers outside code fences and no leftover ZQ...MQZ... placeholder tokens"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "quantstart-bayesian-regression-url-to-markdown",
+      "prompt": "Please save https://www.quantstart.com/articles/batch-linear-regression-via-bayesian-estimation as markdown for offline reading by agents. It's equation-dense so I want the formulas intact and the code listings runnable.",
+      "expected_output": "A markdown file of the Bayesian batch linear regression article with $$...$$ display equations (posterior/product formulas), $\\theta$-style inline math, five ```python fences, and clean front matter.",
+      "files": [],
+      "expectations": [
+        "A markdown file exists in the outputs directory with substantial content (at least 6000 characters)",
+        "Front matter title is 'Batch Linear Regression via Bayesian Estimation' with the canonical source URL",
+        "Equation-dense math survived: at least 10 $$...$$ display blocks including a \\prod_{k=1}^T formula, and inline math such as $\\theta$, $y_k$, $\\sigma^2$",
+        "All five Python code listings appear as ```python fenced blocks (including one with a __main__ entrypoint), with no <span class= highlighter junk inside fences",
+        "Math variable references in prose survived: '\\$k\\$-th' style mangling does NOT occur (the phrase reads '$k$-th' or similar), and '$n=50$' stays as math rather than escaped currency",
+        "The book citation link (Särkkä / Bayesian Filtering and Smoothing) is preserved with an absolute URL",
+        "No raw \\begin{eqnarray} outside $$ blocks and no unbalanced $ delimiter lines flagged by a manual skim"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "offline-fixture-html-with-chrome-and-currency",
+      "prompt": "I saved a copy of a blog article at skills/convert-web-article-to-md/evals/fixtures/quantstart-style-article.html — turn it into a clean markdown file in the outputs directory, keeping the math and code.",
+      "expected_output": "A markdown file converted from the local fixture: loose \\begin{eqnarray} blocks become $$ math, inline \\( \\) becomes $ math, the Prism block becomes a ```python fence with entities unescaped, prose currency stays escaped, and nav/cookie/advert/subscribe/footer chrome is gone.",
+      "files": ["skills/convert-web-article-to-md/evals/fixtures/quantstart-style-article.html"],
+      "expectations": [
+        "A markdown file exists in the outputs directory with at least 1200 characters of body content",
+        "Both loose \\begin{eqnarray} equations appear inside $$...$$ (containing dS_t = \\theta (\\mu - S_t) dt + \\sigma dW_t), with no raw \\begin{eqnarray} remaining",
+        "Inline math converted: $S_t$, $\\Delta t$, $N$ appear as $...$ spans, not as \\$S\\$-style escaped currency",
+        "Prose currency is escaped so it cannot pair into math: the text contains \\$5,000 and \\$10,000",
+        "The Python block is a ```python fence whose content includes 'np.random.normal' and unescaped comparison operators (e.g. '<' rather than '&lt;')",
+        "Chrome is stripped: no 'Subscribe', 'cookie', 'Related Posts', or site-footer text anywhere in the markdown; the advert image (sidebar-advert) is absent",
+        "Front matter includes author 'Fixture Author', published date 2026-08-14, and the canonical quantblog.example URL"
+      ]
+    }
+  ]
+}
