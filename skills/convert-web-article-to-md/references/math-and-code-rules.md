@@ -18,7 +18,7 @@ A single page may mix several encodings. Recover TeX from whichever you find:
 | Math as images | `<img class="math latex" src=".../equation.png" alt="\int_0^t ...">` | Use the `alt` text as TeX when it looks like LaTeX; otherwise transcribe from the rendered image |
 | Already-dollars | `$$ ... $$` / `$ ... $` in the HTML | Keep as-is |
 | ASCII pseudo-math | `<p><strong>d(log S_t) = (mu - sigma^2/2) dt + sigma dW_t</strong></p>` — whole-line bold spans written as plain ASCII | The script passes them through (and warns). Transcribe to native `$$...$$` LaTeX — see §2b |
-| Hydration markdown blob | Article markdown embedded JSON-escaped inside a `<script>` blob (Next.js-style SSR data), searchable in `raw.html` | Ground truth when the rendered DOM is lossy — the site's renderer may have consumed equation underscores into `<em>` tags |
+| Hydration markdown blob | Article markdown embedded JSON-escaped inside a `<script>` blob (Next.js-style SSR data), searchable in `raw.html` | **Automated since the hydration path**: the script extracts, validates and converts it as the preferred source (`Source:` report line; the raw extraction is saved as `hydration.md`). Hand-recovery: grep `raw.html` for the equation text and unescape one JSON level — never iterate unescape passes on TeX-bearing text, or `\theta` becomes tab+"heta" |
 
 ## 2. Normalization rules (source TeX → clean markdown math)
 

@@ -59,6 +59,10 @@ uv run python skills/convert-web-article-to-md/scripts/convert_web_article_to_md
 -o <parent_dir>   # where <slug>/ folders are created (default: . for URLs,
                   # the HTML file's own directory for local files)
 --no-media        # keep images as absolute URLs instead of downloading
+--source auto|dom|blob   # auto (default) prefers the site's embedded hydration
+                  # markdown and falls back to the rendered DOM; dom forces the
+                  # DOM pipeline; blob requires a hydration blob and fails
+                  # without one
 ```
 
 Each input produces:
@@ -67,13 +71,25 @@ Each input produces:
 <slug>/
 ├── <slug>.md     the converted article
 ├── media/        content images, linked inline at their original position
-└── raw.html      the exact HTML parsed — kept for auditing and re-parsing
+├── raw.html      the exact HTML parsed — kept for auditing and re-parsing
+└── hydration.md  the extracted author markdown (only when a hydration blob
+                  was found and used)
 ```
 
 ## How the conversion works
 
-The script isolates the article body (dropping nav/ads/related-posts/cookie
-chrome), then recovers math from every encoding it reasonably finds: loose
+**Preferred source: the site's own markdown.** SSR frameworks (Next.js-style)
+embed the markdown the site rendered inside `<script>` hydration blobs. The
+script finds and validates such a blob (structure signals + title match) and,
+when found, converts that source directly — math markers normalized, prose
+dollars escaped, links absolutized, images downloaded. This is the author's
+own markdown, so it is lossless where the rendered DOM is not: subscripts
+that the site's renderer ate into `<em>` tags survive verbatim. The report's
+`Source:` line tells you which path ran.
+
+**Fallback: the rendered DOM.** Without a usable blob, the script isolates
+the article body (dropping nav/ads/related-posts/cookie chrome), then
+recovers math from every encoding it reasonably finds: loose
 `\begin{env}` TeX nodes, `\( \)` / `\[ \]` spans, MathJax v2
 `<script type="math/tex">` tags, and KaTeX `<span class="katex">` (TeX is
 recovered from the embedded annotation). `\begin{eqnarray}` is rewritten to
@@ -135,7 +151,8 @@ around the wall.
 | Equations appear as images | Math baked into `<img>` (no TeX in the page) | Transcribe display equations to LaTeX manually; the `alt` text often holds the TeX |
 | `unconverted \( / \[ math remains` warning | Regex missed a nested/unusual span | Convert those spans by hand in the `.md`: `\(...\)` → `$...$`, `\[...\]` → `$$...$$` (see reference doc) |
 | `bold ASCII pseudo-math` warnings (many) | The site authors display equations as bold plain text (`**d(log S_t) = ...**`), not LaTeX — the converter reproduces them faithfully | Transcribe each into native `$$...$$` LaTeX against the rendered page (or the hydration markdown blob in `raw.html`); this is expected for some sites (e.g. quantt.co.uk) |
-| `emphasis-mangled math (*{...})` warning | The site's own markdown renderer consumed equation underscores into `<em>` tags before the converter ever saw them — the DOM is already lossy | Grep `raw.html` for the equation text: the original markdown is usually embedded in a hydration `<script>` blob (JSON-escaped). Restore the affected equation from there |
+| `emphasis-mangled math (*{...})` warning (DOM path only) | The site's own markdown renderer consumed equation underscores into `<em>` tags before the converter ever saw them — the DOM is already lossy | The automated fix is the hydration path (`--source blob`, or check it ran: the `Source:` report line). Otherwise grep `raw.html` for the equation text: the original markdown is usually embedded in a hydration `<script>` blob (JSON-escaped). Restore the affected equation from there |
+| `--source blob` fails with "no hydration markdown blob found" | The site doesn't embed its markdown source (server-rendered HTML only) | Use `--source dom` (or auto); the DOM pipeline is the normal path for such sites |
 | `raw LaTeX environment outside $$` warning | An environment the recovery pass didn't wrap | Wrap it in `$$\n...\n$$`; rewrite `eqnarray` to `aligned` while you're there |
 | Fences contain `<span class="token">` junk | Input was a browser-saved DOM with highlighter markup | Expected input for the script — but if a block still has spans, strip them keeping text content |
 | `missing media file: media/...` | Image download failed | Re-download by hand or replace with the absolute URL (it's in the md) |

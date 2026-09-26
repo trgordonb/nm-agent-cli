@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import re
 import sys
@@ -70,6 +71,8 @@ MATH_ENV_RE = re.compile(
     r"|multline\*?|eqnarray\*?|split|cases|dcases|aligned|gathered"
     r"|array|[bpvBV]matrix)\}"
 )
+EXT_BY_TYPE = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
+               "image/gif": ".gif", "image/svg+xml": ".svg"}
 SKIP_MATH_ANCESTORS = ("pre", "code", "script", "style", "textarea", "kbd", "samp")
 
 DISPLAY_TEX_RE = re.compile(r"\\\[(.+?)\\\]", re.S)
@@ -536,6 +539,28 @@ def truncate_trailing_chrome(md_text: str) -> tuple[str, str | None]:
 # Links and images
 # --------------------------------------------------------------------------
 
+def download_image(url: str, media_dir: Path, seen_names: set[str]) -> str | None:
+    """Download one image into media/; returns the local filename or None."""
+    try:
+        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+        ctype = resp.headers.get("content-type", "").split(";")[0].strip()
+        if not (resp.ok and ctype.startswith("image/") and len(resp.content) > 1024):
+            return None
+        ext = EXT_BY_TYPE.get(ctype, Path(urlparse(url).path).suffix or ".png")
+        stem = re.sub(r"[\W_]+", "-", Path(urlparse(url).path).stem or "image").strip("-")[:60] or "image"
+        name = f"{stem}{ext}"
+        n = 2
+        while name in seen_names or (media_dir / name).exists():
+            name = f"{stem}-{n}{ext}"
+            n += 1
+        media_dir.mkdir(parents=True, exist_ok=True)
+        (media_dir / name).write_bytes(resp.content)
+        seen_names.add(name)
+        return name
+    except requests.RequestException:
+        return None
+
+
 def absolutize_links(container: Tag, base_url: str | None) -> int:
     if not base_url:
         return 0
@@ -557,8 +582,6 @@ def handle_images(container: Tag, base_url: str | None, media_dir: Path,
     notes: list[str] = []
     seen_names: set[str] = set()
     media_dir.mkdir(parents=True, exist_ok=True)
-    ext_by_type = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp",
-                   "image/gif": ".gif", "image/svg+xml": ".svg"}
 
     for img in list(container.find_all("img")):
         src = img.get("src") or img.get("data-src") or ""
@@ -583,32 +606,228 @@ def handle_images(container: Tag, base_url: str | None, media_dir: Path,
             img.attrs = {"src": abs_src, "alt": img.get("alt", "")}
             continue
 
-        stem = re.sub(r"[\W_]+", "-", Path(urlparse(abs_src).path).stem or "image").strip("-")[:60] or "image"
-        name, ext = stem, ""
-        ok = False
-        try:
-            resp = requests.get(abs_src, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-            if resp.ok and resp.headers.get("content-type", "").startswith("image/") and len(resp.content) > 1024:
-                ext = ext_by_type.get(resp.headers["content-type"].split(";")[0].strip(),
-                                      Path(urlparse(abs_src).path).suffix or ".png")
-                candidate = f"{name}{ext}"
-                n = 2
-                while candidate in seen_names or (media_dir / candidate).exists():
-                    candidate = f"{name}-{n}{ext}"
-                    n += 1
-                (media_dir / candidate).write_bytes(resp.content)
-                seen_names.add(candidate)
-                img["src"] = f"media/{candidate}"
-                img.attrs = {"src": img["src"], "alt": img.get("alt", "")}
-                saved += 1
-                ok = True
-        except requests.RequestException:
-            ok = False
-        if not ok:
+        stem_ok = False
+        name = download_image(abs_src, media_dir, seen_names)
+        if name:
+            img["src"] = f"media/{name}"
+            img.attrs = {"src": img["src"], "alt": img.get("alt", "")}
+            saved += 1
+            stem_ok = True
+        if not stem_ok:
             img["src"] = abs_src
             img.attrs = {"src": abs_src, "alt": img.get("alt", "")}
             notes.append(f"image download failed, kept absolute URL: {abs_src}")
     return saved, dropped, notes
+
+
+# --------------------------------------------------------------------------
+# Hydration markdown blob (author's markdown embedded by SSR frameworks)
+# --------------------------------------------------------------------------
+
+JS_STRING_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+JS_NOISE_RE = re.compile(
+    r"function\s*\(|=>|self\.__|__NEXT_DATA__|window\.|document\.|:undefined|:null")
+# Signals that a string is (part of) an article markdown source.
+MD_HEADING_RE = re.compile(r"(?m)^#{1,6} \S")
+MD_LIST_RE = re.compile(r"(?m)^[-*+] \S")
+IMG_MD_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
+LINK_MD_RE = re.compile(r"(?<!\\)(?<!!)\[([^\]\n]+)\]\(([^)\s]+)\)")
+
+
+def unescape_js_string(s: str) -> str:
+    """One JSON/JS-style unescape pass, left-to-right.
+
+    Properly encoded blobs double LaTeX backslashes (\\\\frac in the raw
+    payload), so after one pass TeX macros survive intact; unknown escapes
+    like \\( pass through unchanged. Never iterate passes on TeX-bearing
+    text — a second pass would corrupt \\theta into tab+"heta" etc.
+    """
+    simple = {"n": "\n", "t": "\t", "r": "", '"': '"', "'": "'",
+              "\\": "\\", "/": "/", "`": "`", "b": "\b", "f": "\f"}
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\" and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt in simple:
+                out.append(simple[nxt])
+                i += 2
+                continue
+            if nxt == "u" and i + 6 <= len(s):
+                try:
+                    out.append(chr(int(s[i + 2:i + 6], 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    pass
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def markdown_chunk_score(text: str) -> int:
+    """How much a candidate string looks like article markdown (0 = no)."""
+    if len(text) < 120:
+        return 0
+    if text.lstrip()[:1] in ("{", "[", "<"):
+        return 0
+    body = re.sub(r"```.*?```", "", text, flags=re.S)  # code fences may hold JS
+    if len(JS_NOISE_RE.findall(body)) >= 2:
+        return 0
+    score = (len(MD_HEADING_RE.findall(text)) + len(MD_LIST_RE.findall(text))
+             + text.count("**") // 2 + text.count("\\(") + text.count("\\[")
+             + text.count("```") // 2)
+    return score
+
+
+def find_hydration_markdown(soup: BeautifulSoup, meta: dict[str, str]) -> str | None:
+    """Extract the article's markdown source from SSR hydration script blobs.
+
+    Next.js-style frameworks embed the markdown the site itself rendered, as
+    JSON-escaped strings inside self.__next_f.push(...) calls. That source is
+    strictly more faithful than the rendered DOM (whose renderer may have
+    eaten equation underscores into <em> tags), so when a valid blob exists
+    the caller prefers it. Chunks are concatenated in document order.
+    """
+    chunks: list[str] = []
+    seen: set[str] = set()
+    for script in soup.find_all("script"):
+        if script.get("src"):
+            continue
+        text = script.string or script.get_text()
+        if not text or len(text) < 200:
+            continue
+        for match in JS_STRING_RE.finditer(text):
+            raw = match.group(1)
+            if len(raw) < 120 or raw in seen:
+                continue
+            cand = unescape_js_string(raw)
+            if markdown_chunk_score(cand) < 1:
+                continue
+            seen.add(raw)
+            chunks.append(cand)
+    if not chunks:
+        return None
+    md = "\n\n".join(chunks)
+    # Validation: real article structure, not UI strings or leftover props.
+    if len(md) < 1200 or len(MD_HEADING_RE.findall(md)) < 3:
+        return None
+    words = [w.lower() for w in re.findall(r"[A-Za-z]{4,}", meta.get("title", ""))][:8]
+    if words and sum(1 for w in words if w in md.lower()) < min(2, len(words)):
+        return None
+    return md
+
+
+def convert_markdown_source(md: str, meta: dict[str, str], base_url: str | None,
+                            media_dir: Path, no_media: bool) -> tuple[str, dict[str, int], list[str]]:
+    """Convert author markdown (hydration source) to the final document.
+
+    No markdownify involved — the text is already markdown, so subscripts,
+    pseudo-math and fences pass through verbatim. Only markers, currency,
+    links and images are normalized.
+    """
+    notes: list[str] = []
+    md = html.unescape(md)  # CMS entities (&amp;); TeX \& is untouched
+
+    n_display_tex = 0
+
+    def display_repl(m: re.Match) -> str:
+        nonlocal n_display_tex
+        n_display_tex += 1
+        return f"\n\n$$\n{m.group(1).strip()}\n$$\n\n"
+
+    n_inline_tex = 0
+
+    def inline_repl(m: re.Match) -> str:
+        nonlocal n_inline_tex
+        n_inline_tex += 1
+        return f"${m.group(1).strip()}$"
+
+    md = DISPLAY_TEX_RE.sub(display_repl, md)
+    md = INLINE_TEX_RE.sub(inline_repl, md)
+    md = eqnarray_to_aligned(md)
+
+    # Loose \begin{env} paragraphs -> $$ blocks
+    n_loose = 0
+    rebuilt = []
+    for para in re.split(r"\n\s*\n", md):
+        stripped = para.strip()
+        if stripped and MATH_ENV_RE.match(stripped):
+            rebuilt.append(f"$$\n{eqnarray_to_aligned(stripped)}\n$$")
+            n_loose += 1
+        else:
+            rebuilt.append(para)
+    md = "\n\n".join(rebuilt)
+
+    # Prose dollars vs inline math, per line outside fences
+    stats = {"display_math": 0, "inline_math": 0, "currency_escaped": 0}
+    lines = md.split("\n")
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence or "$" not in line or "$$" in line:
+            continue
+        pieces: list[str] = []
+        pos = 0
+        for start, end, repl in _math_span_iter(line, stats):
+            pieces.append(line[pos:start])
+            pieces.append(repl)
+            pos = end
+        if pos:
+            pieces.append(line[pos:])
+            lines[i] = "".join(pieces)
+    md = "\n".join(lines)
+
+    # Links: make relative URLs absolute
+    if base_url:
+        def link_repl(m: re.Match) -> str:
+            label, url = m.group(1), m.group(2)
+            if url.startswith(("http://", "https://", "mailto:", "#")):
+                return m.group(0)
+            return f"[{label}]({urljoin(base_url, url)})"
+
+        md = LINK_MD_RE.sub(link_repl, md)
+
+    # Images: download content images, keep the rest as URLs
+    media_dir.mkdir(parents=True, exist_ok=True)
+    seen_names: set[str] = set()
+    n_saved = 0
+
+    def img_repl(m: re.Match) -> str:
+        nonlocal n_saved
+        alt, url = m.group(1), m.group(2)
+        if not url.startswith(("http://", "https://")):
+            url = urljoin(base_url or "", url)
+        if no_media or not url.startswith("http"):
+            return f"![{alt}]({url})"
+        name = download_image(url, media_dir, seen_names)
+        if name:
+            n_saved += 1
+            return f"![{alt}](media/{name})"
+        notes.append(f"image download failed, kept absolute URL: {url}")
+        return f"![{alt}]({url})"
+
+    md = IMG_MD_RE.sub(img_repl, md)
+
+    # Drop the blob's own H1 title if it duplicates the meta title
+    lines = md.split("\n")
+    for idx, line in enumerate(lines):
+        if not line.strip():
+            continue
+        if line.startswith("# "):
+            heading_words = set(re.findall(r"[a-z]{4,}", line.lower()))
+            title_words = set(re.findall(r"[a-z]{4,}", (meta.get("title") or "").lower()))
+            if title_words and len(heading_words & title_words) >= min(3, len(title_words)):
+                md = "\n".join(lines[idx + 1:])
+        break
+
+    stats["display_tex"] = n_display_tex + n_loose
+    stats["inline_tex"] = n_inline_tex
+    return md, stats, notes
 
 
 # --------------------------------------------------------------------------
@@ -762,7 +981,7 @@ def derive_slug(source: str, title: str) -> str:
 # Per-article driver
 # --------------------------------------------------------------------------
 
-def convert_one(source: str, parent_dir: Path, no_media: bool) -> int:
+def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str = "auto") -> int:
     is_remote = is_url(source)
     if is_remote:
         raw_html = fetch_url(source)
@@ -777,58 +996,94 @@ def convert_one(source: str, parent_dir: Path, no_media: bool) -> int:
     soup = BeautifulSoup(raw_html, "html.parser")
     meta = extract_meta(soup, source if is_remote else (soup.select_one('link[rel="canonical"]') and soup.select_one('link[rel="canonical"]')["href"]) or "")
 
-    drop_useless_tags(soup)
-    container = find_container(soup)
-    removed_chrome = remove_chrome(container)
-
-    # Article title: prefer the h1 inside the body over og:title.
-    h1 = container.find("h1")
-    if h1:
-        h1_text = h1.get_text(" ", strip=True)
-        if h1_text:
-            meta["title"] = strip_title_suffix(h1_text, meta.get("site", ""))
-            h1.decompose()
-
-    n_mathjax = convert_mathjax_scripts(soup)
-    n_katex = convert_katex(soup)
-    n_mathjax_scripts_used = n_mathjax + n_katex
-    n_loose = loose_display_math(container)
-    n_inline = inline_tex_to_dollars(container)
-
     slug = derive_slug(source if is_remote else meta.get("source") or source, meta.get("title", ""))
     out_dir = parent_dir / slug
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "raw.html").write_text(raw_html, encoding="utf-8")
 
-    bank = TokenBank(str(container))
-    code_stats = protect_code_and_math(container, bank)
-    n_mathish = protect_mathish(container, bank)
-    absolutize_links(container, base_url)
-    saved_imgs, dropped_imgs, img_notes = handle_images(
-        container, base_url, out_dir / "media", no_media)
-    wrap_loose_strings(container)
+    warnings: list[str] = []
+    img_notes: list[str] = []
+    cta_note = None
 
-    md_body = to_markdown(container, bank)
-    document = assemble(md_body, meta)
-    document, cta_note = truncate_trailing_chrome(document)
-    md_path = out_dir / f"{slug}.md"
-    md_path.write_text(document, encoding="utf-8")
+    # ---- Preferred path: the site's own markdown (hydration blob) ----
+    blob = find_hydration_markdown(soup, meta) if source_mode in ("auto", "blob") else None
+    if source_mode == "blob" and not blob:
+        raise ConversionError("no hydration markdown blob found (--source blob)")
+    if blob:
+        (out_dir / "hydration.md").write_text(blob, encoding="utf-8")
+        body, stats, img_notes = convert_markdown_source(
+            blob, meta, base_url, out_dir / "media", no_media)
+        document = assemble(body, meta)
+        document, cta_note = truncate_trailing_chrome(document)
+        md_path = out_dir / f"{slug}.md"
+        md_path.write_text(document, encoding="utf-8")
+        src_note = ("hydration markdown blob (author source; DOM used for "
+                    "front matter only)")
+        n_display = stats["display_math"] + stats["display_tex"]
+        n_inline = stats["inline_math"] + stats["inline_tex"]
+        n_currency = stats["currency_escaped"]
+        n_code = len(re.findall(r"(?m)^```", document)) // 2
+        saved_imgs = sum(1 for m in re.findall(r"!\[[^\]]*\]\(media/[^)]+\)", document))
+        dropped_imgs = 0
+        removed_chrome = 0
+        n_mathish = 0
+    else:
+        if source_mode == "blob":
+            raise ConversionError("no hydration markdown blob found (--source blob)")
+        src_note = "rendered DOM"
+
+        drop_useless_tags(soup)
+        container = find_container(soup)
+        removed_chrome = remove_chrome(container)
+
+        # Article title: prefer the h1 inside the body over og:title.
+        h1 = container.find("h1")
+        if h1:
+            h1_text = h1.get_text(" ", strip=True)
+            if h1_text:
+                meta["title"] = strip_title_suffix(h1_text, meta.get("site", ""))
+                h1.decompose()
+
+        n_mathjax = convert_mathjax_scripts(soup)
+        n_katex = convert_katex(soup)
+        n_mathjax_scripts_used = n_mathjax + n_katex
+        n_loose = loose_display_math(container)
+        inline_tex_to_dollars(container)
+
+        bank = TokenBank(str(container))
+        code_stats = protect_code_and_math(container, bank)
+        n_mathish = protect_mathish(container, bank)
+        absolutize_links(container, base_url)
+        saved_imgs, dropped_imgs, img_notes = handle_images(
+            container, base_url, out_dir / "media", no_media)
+        wrap_loose_strings(container)
+
+        md_body = to_markdown(container, bank)
+        document = assemble(md_body, meta)
+        document, cta_note = truncate_trailing_chrome(document)
+        md_path = out_dir / f"{slug}.md"
+        md_path.write_text(document, encoding="utf-8")
+        n_display = code_stats["display_math"] + n_loose + n_mathjax_scripts_used
+        n_inline = code_stats["inline_math"] + sum(
+            1 for _, r in bank.items if r.startswith('$') and not r.startswith('$$'))
+        n_currency = code_stats["currency_escaped"]
+        n_code = code_stats["code"]
 
     warnings = verify(document)
     warnings.extend(f"missing media file: {m}" for m in check_media(document, out_dir))
     warnings.extend(img_notes)
 
     # ---- report ----
-    n_display = code_stats["display_math"] + n_loose + n_mathjax_scripts_used
     print("=" * 72)
     print(f"Converted: {meta.get('title') or source}")
     print(f"Output:    {md_path}")
+    print(f"Source:    {src_note}")
     print(f"Raw HTML:  {out_dir / 'raw.html'} (kept for re-parsing / audit)")
     print(f"Math:      {n_display} display ($$...$$), "
-          f"{code_stats['inline_math'] + sum(1 for _, r in bank.items if r.startswith('$') and not r.startswith('$$'))} inline ($...$), "
-          f"{code_stats['currency_escaped']} currency-$ escaped, "
+          f"{n_inline} inline ($...$), "
+          f"{n_currency} currency-$ escaped, "
           f"{n_mathish} _/^ math chars protected")
-    print(f"Code:      {code_stats['code']} fenced block(s)")
+    print(f"Code:      {n_code} fenced block(s)")
     print(f"Images:    {saved_imgs} saved to media/, {dropped_imgs} chrome/ads dropped")
     print(f"Chrome:    {removed_chrome} boilerplate block(s) removed")
     if cta_note:
@@ -855,6 +1110,11 @@ def main(argv: list[str]) -> int:
                              "directory for local .html inputs)")
     parser.add_argument("--no-media", action="store_true",
                         help="skip downloading images (keep absolute URLs)")
+    parser.add_argument("--source", choices=("auto", "dom", "blob"), default="auto",
+                        help="conversion source: auto prefers the site's embedded "
+                             "hydration markdown and falls back to the rendered DOM "
+                             "(default); dom forces the DOM pipeline; blob requires "
+                             "a hydration markdown blob and fails without one")
     args = parser.parse_args(argv)
 
     failures = 0
@@ -865,7 +1125,7 @@ def main(argv: list[str]) -> int:
             parent = Path(args.output or Path(source).expanduser().resolve().parent).expanduser()
         parent.mkdir(parents=True, exist_ok=True)
         try:
-            convert_one(source, parent, args.no_media)
+            convert_one(source, parent, args.no_media, args.source)
         except ConversionError as exc:
             failures += 1
             print(f"ERROR converting {source}: {exc}", file=sys.stderr)
