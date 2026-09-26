@@ -150,6 +150,9 @@ around the wall.
 | Output is tiny/empty | Wrong content container detected on an unusual layout | Open `raw.html`, find the article wrapper's class/id; if it's beyond quick manual fixes, extract the body by hand using the reference doc's rules |
 | Equations appear as images | Math baked into `<img>` (no TeX in the page) | Transcribe display equations to LaTeX manually; the `alt` text often holds the TeX |
 | `unconverted \( / \[ math remains` warning | Regex missed a nested/unusual span | Convert those spans by hand in the `.md`: `\(...\)` → `$...$`, `\[...\]` → `$$...$$` (see reference doc) |
+| Mangled rendered-text math soup (e.g. `EWMAt=(1−λ)×Yt+...EWMA_t = ...`) | KaTeX variant with no `<annotation>` (some WordPress plugins): TeX sits as trailing text inside `<math>` | Fixed in-script: TeX recovered from the `<math>` tail; for older runs, transcribe from the `<span class="katex-mathml"><math>...` block in `raw.html` |
+| All article figures missing, `Images: N chrome/ads dropped` | Notebook posts embed figures as base64 `data:image/png;base64,` URIs | Fixed in-script: data-URI PNG/JPEG figures are decoded into `media/`. If the decode fails, the report lists each failure under Needs attention |
+| `data-URI image decode failed (...)` warning | Malformed or non-raster data-URI | Check `raw.html`; download/decode by hand if the figure matters |
 | `bold ASCII pseudo-math` warnings (many) | The site authors display equations as bold plain text (`**d(log S_t) = ...**`), not LaTeX — the converter reproduces them faithfully | Transcribe each into native `$$...$$` LaTeX against the rendered page (or the hydration markdown blob in `raw.html`); this is expected for some sites (e.g. quantt.co.uk) |
 | `emphasis-mangled math (*{...})` warning (DOM path only) | The site's own markdown renderer consumed equation underscores into `<em>` tags before the converter ever saw them — the DOM is already lossy | The automated fix is the hydration path (`--source blob`, or check it ran: the `Source:` report line). Otherwise grep `raw.html` for the equation text: the original markdown is usually embedded in a hydration `<script>` blob (JSON-escaped). Restore the affected equation from there |
 | `--source blob` fails with "no hydration markdown blob found" | The site doesn't embed its markdown source (server-rendered HTML only) | Use `--source dom` (or auto); the DOM pipeline is the normal path for such sites |
@@ -165,8 +168,9 @@ around the wall.
   automatically — flag those to the user.
 - **Embedded iframes** (videos, calculators) become `[embedded content: url]`
   links, not embeds.
-- **Data-URI images** (charts drawn to base64 at page load) are dropped —
-  screenshot them in a browser if the figure matters.
+- Base64 `data:image/png;base64,` / `data:image/jpeg;base64,` figures are
+  decoded into `media/` (notebook-style posts); other data-URI images remain
+  dropped.
 - The chrome-removal heuristics are conservative (anything holding half the
   article survives), but novel layouts can still leak boilerplate — the final
   skim catches it.

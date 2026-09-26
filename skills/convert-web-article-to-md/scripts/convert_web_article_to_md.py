@@ -30,6 +30,7 @@ under "Needs human/agent attention" must be fixed by hand (see
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import html
 import json
@@ -261,7 +262,12 @@ def remove_chrome(container: Tag) -> int:
             tag.decompose()
             removed += 1
     for tag in container.find_all(True):
-        marker = " ".join(filter(None, [" ".join(tag.get("class", [])), tag.get("id", "")]))
+        # bs4 can produce tags whose .attrs is None (observed on robotwealth.com);
+        # .get() would then raise AttributeError. Skip such tags — no marker.
+        if getattr(tag, "attrs", None) is None:
+            continue
+        classes = tag.get("class") or []
+        marker = " ".join(filter(None, [" ".join(classes), tag.get("id") or ""]))
         if marker and CHROME_PAT.search(marker):
             # Safety valve: never remove something that holds half the article.
             if len(tag.get_text(" ", strip=True)) <= total_text * 0.5:
@@ -310,6 +316,22 @@ def convert_katex(soup: BeautifulSoup) -> int:
     for span in soup.select("span.katex"):
         ann = span.select_one('annotation[encoding="application/x-tex"]')
         tex = ann.get_text() if ann else ""
+        if not tex:
+            # Variant seen with WordPress KaTeX plugins (robotwealth.com): no
+            # <annotation>; the TeX sits as trailing text inside <math> after
+            # the last MathML element. Without this, the page's rendered-text
+            # duplicate (in span.katex-html) leaks into the output as mangled
+            # soup like "EWMAt=(1−λ)×Yt+λ×EWMAt−1EWMA_t = ...".
+            mathml = span.select_one("span.katex-mathml math")
+            if mathml:
+                tail = ""
+                for child in reversed(mathml.contents):
+                    if isinstance(child, Tag):
+                        break
+                    tail = str(child) + tail
+                tail = tail.strip()
+                if tail and re.match(r"^[A-Za-z\\]", tail):
+                    tex = tail
         if not tex:
             continue
         display = span.find_parent(class_="katex-display") is not None
@@ -591,11 +613,41 @@ def handle_images(container: Tag, base_url: str | None, media_dir: Path,
         width = img.get("width") or ""
         height = img.get("height") or ""
         tiny = (width.isdigit() and int(width) <= 64) or (height.isdigit() and int(height) <= 64)
+        if not src:
+            img.decompose()
+            dropped += 1
+            continue
+        if src.startswith("data:image/png;base64,") or src.startswith("data:image/jpeg;base64,"):
+            # Notebook-output figures are often embedded as base64 data-URIs.
+            # The bytes are fully present, so decode and save them locally —
+            # dropping them loses every chart in the article (observed on
+            # robotwealth.com notebook posts: 7 figures, all data-URI PNGs).
+            try:
+                b64 = src.split("base64,", 1)[1]
+                data = base64.b64decode(b64)
+                ctype = "image/png" if src.startswith("data:image/png") else "image/jpeg"
+                ext = EXT_BY_TYPE[ctype]
+                stem = re.sub(r"[\W_]+", "-", img.get("alt", "")[:60]).strip("-") or "data-image"
+                name = f"{stem}{ext}"
+                n = 2
+                while name in seen_names or (media_dir / name).exists():
+                    name = f"{stem}-{n}{ext}"
+                    n += 1
+                (media_dir / name).write_bytes(data)
+                seen_names.add(name)
+                img["src"] = f"media/{name}"
+                img.attrs = {"src": img["src"], "alt": img.get("alt", "")}
+                saved += 1
+            except Exception as exc:
+                notes.append(f"data-URI image decode failed ({exc.__class__.__name__}: {exc}); dropped")
+                img.decompose()
+                dropped += 1
+            continue
         if src.startswith("data:"):
             img.decompose()
             dropped += 1
             continue
-        if IMG_JUNK_PAT.search(img_attrs) or tiny or not src:
+        if IMG_JUNK_PAT.search(img_attrs) or tiny:
             img.decompose()
             dropped += 1
             continue
