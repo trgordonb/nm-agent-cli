@@ -943,6 +943,40 @@ def verify(text: str) -> list[str]:
     return warnings[:20]
 
 
+def count_math_spans(document: str) -> tuple[int, int]:
+    """Count unique (display $$ blocks, inline $...$ spans) in final markdown.
+
+    Conversion-event counters double-report spans that were normalized from
+    \( \\) markers and then re-matched as dollar math; this counts the actual
+    output, fence- and display-aware, so the report is honest.
+    """
+    display = inline = 0
+    in_fence = False
+    in_display = False
+    for line in document.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if in_display:
+            if "$$" in line:
+                in_display = False
+            continue
+        if "$$" not in line:
+            inline += len(re.findall(r"(?<!\\)\$([^$\n]+?)\$(?!\$)", line))
+            continue
+        pairs = stripped.count("$$")
+        display += pairs // 2
+        if pairs % 2 == 1:
+            display += 1
+            in_display = True
+        remainder = re.sub(r"\$\$.*?\$\$", "", stripped)
+        inline += len(re.findall(r"(?<!\\)\$([^$\n]+?)\$(?!\$)", remainder))
+    return display, inline
+
+
 def check_media(text: str, out_dir: Path) -> list[str]:
     missing = []
     for match in re.finditer(r"!\[[^\]]*\]\((media/[^)]+)\)", text):
@@ -1019,8 +1053,6 @@ def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str 
         md_path.write_text(document, encoding="utf-8")
         src_note = ("hydration markdown blob (author source; DOM used for "
                     "front matter only)")
-        n_display = stats["display_math"] + stats["display_tex"]
-        n_inline = stats["inline_math"] + stats["inline_tex"]
         n_currency = stats["currency_escaped"]
         n_code = len(re.findall(r"(?m)^```", document)) // 2
         saved_imgs = sum(1 for m in re.findall(r"!\[[^\]]*\]\(media/[^)]+\)", document))
@@ -1063,9 +1095,6 @@ def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str 
         document, cta_note = truncate_trailing_chrome(document)
         md_path = out_dir / f"{slug}.md"
         md_path.write_text(document, encoding="utf-8")
-        n_display = code_stats["display_math"] + n_loose + n_mathjax_scripts_used
-        n_inline = code_stats["inline_math"] + sum(
-            1 for _, r in bank.items if r.startswith('$') and not r.startswith('$$'))
         n_currency = code_stats["currency_escaped"]
         n_code = code_stats["code"]
 
@@ -1074,6 +1103,7 @@ def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str 
     warnings.extend(img_notes)
 
     # ---- report ----
+    n_display, n_inline = count_math_spans(document)
     print("=" * 72)
     print(f"Converted: {meta.get('title') or source}")
     print(f"Output:    {md_path}")
