@@ -125,3 +125,39 @@ translate mechanically, keeping the author's structure:
    dropped).
 5. When in doubt about a dropped passage, search `raw.html` for the
    surrounding sentence and diff.
+
+## 6. Transcribing math images to LaTeX (vision pass, `--math-images`)
+
+When a site bakes equations into images (usually with empty `alt`), the
+script's `--math-images` flag collects the candidates into
+`math-images.json` and downloads what it can. Turning pixels back into TeX
+is the agent's vision job. Rules, in priority order:
+
+1. **Upscale before reading.** Equation PNGs are typically 60–140 px tall;
+   at native size coefficients and subscripts misread. 3× Lanczos is the
+   working default (`PIL.Image.resize(..., Image.LANCZOS)`), then Read the
+   upscaled file.
+2. **Transcribe faithfully — you are recovering a document, not improving
+   it.** Keep the source's `·` multiplication (`\cdot`), its bracket
+   nesting, its variable names, and its term order. The one cosmetic
+   upgrade that is always safe is subscripting (`y0` → `y_0`). If the
+   notation is Mathematica-TraditionalForm style (dots, square-bracket
+   nesting), preserve it rather than rewriting to a cleaner form.
+3. **Line breaks in the source equation** → `aligned`; piecewise
+   definitions (braced two-column) → `cases`.
+4. **Cross-check against the prose.** The text around the image almost
+   always states the parameters ("where the parameter N (N > 1) is…",
+   "0 <= α <= 1"). Every symbol in the transcription must be consistent
+   with those statements.
+5. **Run cheap structure checks when the formula class is known.** Mean
+   filters must have unity DC gain (evaluate the coefficient sums — e.g.
+   weights summing to $M(M+1)/2$ per nested sum combine as $3-3+1=1$).
+   Smoothing cascades show binomial patterns (3, −3, 1). A check that
+   fails means a misread, not a novel discovery — re-read the image.
+6. **Never invent.** If a glyph stays unreadable after upscaling, mark the
+   spot in the `.md` (`% TODO unreadable: …`) and flag it to the user —
+   do not guess a coefficient.
+7. **Patch and record provenance.** Replace the image's markdown line with
+   the LaTeX block; keep the fetched image file in `media/`; extend the
+   front-matter `math-transcription:` line (which figures, from which
+   source: Wayback snapshot or browser-act fetch).

@@ -197,29 +197,38 @@ _MCP_KEEP_TOOLS = frozenset({
 })
 
 
+_AGENT_BROWSER_SESSION = "nm-agent"
+
+# Finance Toolkit MCP is intentionally dormant. If it is ever re-activated,
+# add to the servers dict below:
+#   "finance_toolkit": {
+#       "transport": "streamable_http",
+#       "url": _FINANCETOOLKIT_URL,
+#       "headers": {"Authorization": f"Bearer {fmp_key}"}},
+#   }
+# and filter its tools with _MCP_KEEP_TOOLS (kept for that purpose).
+
+
 async def _load_mcp_tools() -> list:
-    fmp_key = os.getenv("FINANCIAL_MODELING_PREP_API_KEY", "")
-    if not fmp_key:
-        raise RuntimeError("FINANCIAL_MODELING_PREP_API_KEY is not set (required for the Finance Toolkit MCP server).")
-    mcp_client = MultiServerMCPClient(
-        {
-            "finance_toolkit": {
-                "transport": "streamable_http",
-                "url": _FINANCETOOLKIT_URL,
-                "headers": {"Authorization": f"Bearer {fmp_key}"},
-            }
-        }
-    )
+    """Bind MCP tool servers: local Chrome automation via agent-browser
+    (Rust CLI, no API key, core tool profile). The dedicated session name
+    keeps agent work out of the shared default browser session."""
     try:
-        all_mcp_tools = await mcp_client.get_tools()
+        server_tools = await MultiServerMCPClient(
+            {
+                "agent_browser": {
+                    "transport": "stdio",
+                    "command": "agent-browser",
+                    "args": ["mcp", "--tools", "core"],
+                    "env": {**os.environ, "AGENT_BROWSER_SESSION": _AGENT_BROWSER_SESSION},
+                }
+            }
+        ).get_tools()
     except Exception as e:
-        logging.warning(f"Finance Toolkit MCP connection failed, continuing without MCP tools: {str(e)[:300]}")
+        logging.warning(f"agent-browser MCP failed, continuing without it: {str(e)[:300]}")
         return []
-    kept = [t for t in all_mcp_tools if t.name in _MCP_KEEP_TOOLS]
-    filtered = [t.name for t in all_mcp_tools if t.name not in _MCP_KEEP_TOOLS]
-    if filtered:
-        logging.info(f"Finance Toolkit MCP: bound {len(kept)} tools, filtered out: {filtered}")
-    return kept
+    logging.info(f"agent-browser MCP: bound {len(server_tools)} tools")
+    return server_tools
 
 
 # Define the agent state
@@ -527,9 +536,9 @@ async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_mo
 async def run_cli(resume_session_id: str | None = None):
     global session_id
 
-    #mcp_tools = await _load_mcp_tools()
-    #if mcp_tools:
-    #    print(f"Connected to Finance Toolkit MCP ({len(mcp_tools)} tools)")
+    mcp_tools = await _load_mcp_tools()
+    if mcp_tools:
+        print(f"Connected to MCP servers ({len(mcp_tools)} tools)")
     # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
     wiki = WikiStore()  # absent/empty ./llm-wiki -> tool absent, pre-flight inactive
     all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
@@ -538,6 +547,8 @@ async def run_cli(resume_session_id: str | None = None):
         skill_manage_tool,
         load_skill_tool,
     ]
+    if mcp_tools:
+        all_tools.extend(mcp_tools)
     wiki_search_tool = create_wiki_search_tool(wiki) if wiki.available() else None
     if wiki_search_tool:
         all_tools.append(wiki_search_tool)
@@ -556,6 +567,17 @@ async def run_cli(resume_session_id: str | None = None):
 
     console = Console()
 
+    def wiki_os_status() -> str:
+        """Wiki-os web UI status for the banner: URL when reachable, else a hint."""
+        url = os.getenv("WIKI_OS_URL", "http://localhost:5211")
+        try:
+            import httpx
+
+            httpx.get(url, timeout=0.5)
+            return f"[link={url}]{url}[/link] — browse ./wiki"
+        except Exception:
+            return "not running (./start.sh starts it)"
+
     def render_banner() -> None:
         info = Table.grid(padding=(0, 2))
         info.add_row("[dim]memory[/dim]", f"{memory.total_chars()}/{MEMORY_CHAR_LIMIT} chars")
@@ -567,6 +589,7 @@ async def run_cli(resume_session_id: str | None = None):
         )
         info.add_row("[dim]context compressor[/dim]", context_compressor.label if context_compressor else "disabled")
         info.add_row("[dim]wiki[/dim]", "llm-wiki (auto-recall + wiki_search)" if wiki.available() else "absent")
+        info.add_row("[dim]wiki-os[/dim]", wiki_os_status())
         console.print(
             Panel(
                 info,

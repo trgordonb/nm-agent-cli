@@ -21,6 +21,24 @@ All memory code lives in the [nm-memory-layer](https://github.com/trgordonb/nm-m
 
 Copy `.env.example` to `.env` and fill in your keys.
 
+## Skills
+
+`skills/` ships with the repo in agentskills.io format: names + descriptions are indexed per session, full `SKILL.md` loads on demand via `load_skill`, and the agent patches skills itself when a workflow proves reusable.
+
+| Skill | What it does |
+|---|---|
+| `browser-act` | Stealth browser automation + anti-bot extraction: `stealth-extract` pulls Cloudflare-protected pages without opening a session, headed local-Chrome sessions download gated files, with CAPTCHA assistance and remote human handoff ([browser-act](https://github.com/browser-act/skills)) |
+| `agent-browser` | Fast local Chrome automation via CDP: accessibility-tree snapshots with `@eN` refs, JS eval, session persistence, HAR capture ([npm: agent-browser](https://www.npmjs.com/package/agent-browser)) — also exposed to the agent as a 29-tool MCP server |
+| `convert-web-article-to-md` | Web articles → agent-readable Markdown: native `$`/`$$` LaTeX, language-tagged code fences, downloaded figures, provenance front matter. Cloudflare-blocked fetches route through browser-act; `--math-images` transcribes equations rendered as images (Wayback + vision pass) |
+| `convert-arxiv-to-md` | arXiv papers → Markdown from the LaTeX source via pandoc: real tables, native math, figures, references |
+| `convert-pdf-to-md` | Local PDF documents → Markdown for analysis, search, and extraction |
+| `llm-wiki` | Bootstrap / ingest / lint / graph pipeline for the OKF knowledge vault in `wiki/` (sources, entities, concepts, synthesis, typed graph layer) |
+| `edgar` | SEC EDGAR filings in Python via EdgarTools (10-K, 10-Q, 8-K, 13F, Form 4, insider trading) |
+| `financial-toolkits` | FinanceToolkit locally in Python: 200+ ratios, indicators, models, and economic indicators (FMP-backed) |
+| `tradedesk-dukascopy` | Dukascopy tick-data fetch pipelines for backtests (forex, indices, stocks; ticker naming differs from yfinance) |
+
+The two browser skills are complementary: **browser-act** handles bot-walled targets (stealth fingerprints, proxies, confirmation-gated cloud resources), **agent-browser** is the fast local workhorse — on Cloudflare-walled sites launch it headed with `AGENT_BROWSER_ARGS="--disable-blink-features=AutomationControlled"`.
+
 ## Quick start
 
 ```bash
@@ -36,7 +54,7 @@ Env config lives in `.env` (not committed): `OPENAI_API_KEY`/`OPENAI_BASE_URL` (
 
 - `sessions.db` — verbatim turn archive (WAL); resumable via `--session-id`; exportable via `nm_memory_layer.SessionStore.export_to_jsonl`
 - `memories/` — the always-on memory files the agent curates (`MEMORY.md`, `USER.md`)
-- `skills/` — agent-loadable skills; the agent patches them itself when a workflow proves reusable
+- `skills/` — agent-loadable skills, tracked on GitHub; the agent patches them itself when a workflow proves reusable
 
 ## Docs
 

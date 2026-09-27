@@ -25,6 +25,17 @@ Current phase: **All five phases complete — session store, prompt memory, nudg
 
 `tools.py` (viking tool bindings) and `.env` `OPENVIKING_*` vars are the only leftovers; both inert for `main.py`.
 
+## Skills
+
+`skills/` is tracked on GitHub. The index (names + descriptions) auto-injects per session; `load_skill` pulls the full SKILL.md. The agent curates skills itself via `skill_manage` + memory nudges.
+
+- **browser-act** — stealth browser automation + anti-bot extraction: `stealth-extract <url> --content-type html|markdown` pulls CF-protected pages sessionless; headed local-Chrome sessions download gated files (`media resources download`); captcha ladder ends in `remote-assist`. Load the skill before ANY browser-act CLI command; browser create/delete are Confirmation-Gated (present plan → stop → wait → execute). Prior approvals never carry over.
+- **agent-browser** — local CDP automation (snapshots with `@eN` refs, `eval --stdin`, sessions, HAR); also bound as a stdio MCP server → 29 `agent_browser_*` tools on session `nm-agent`. Bot-walled sites: stock build exposes `navigator.webdriver` — launch headed with `AGENT_BROWSER_ARGS="--disable-blink-features=AutomationControlled"`, then in-page `fetch` retrieves gated assets (base64 out, decode twice).
+- **convert-web-article-to-md** — articles → agent-readable md (math/code recovery, provenance front matter, figures in `media/`). Cloudflare 403s: the fetch error prints the exact browser-act rescue command. `--math-images` (opt-in): detects equation images → direct/Wayback download (incl. CDX scaled-variant fallback) → `math-images.json` manifest → agent vision transcription per `references/math-and-code-rules.md` §6 (upscale 3×, faithful notation, sanity checks, never invent).
+- **convert-arxiv-to-md** / **convert-pdf-to-md** — routing siblings: arXiv papers go to the arxiv skill (LaTeX source beats HTML), local PDFs to the pdf skill; web URLs stay here.
+- **llm-wiki** — vault bootstrap, ingest, lint, and graph extraction for `wiki/` (see OPERATIONS.md §2–§5, §8).
+- **edgar** (SEC filings via EdgarTools), **financial-toolkits** (FMP-backed analytics), **tradedesk-dukascopy** (tick-data pipelines) — the original research toolchain.
+
 ## Commands
 
 ```bash
@@ -37,6 +48,10 @@ uv run pytest tests/ -q                   # integration tests for main.py wiring
 ## Roadmap
 
 Phases 2–5 (prompt memory, periodic nudge, skills layer, compression) are implemented in `nm-memory-layer` and wired here; see that repo's CLAUDE.md.
+
+## TODO
+
+- [ ] **PixelRAG pilot for wiki visual retrieval** (evaluated 2026-09-27; [repo](https://github.com/StarTrail-org/PixelRAG), 10.1k stars, active). Renders documents (pages/PDFs) as screenshot tiles, embeds with Qwen3-VL, retrieves over images — charts/tables/appendix figures stay queryable. **NOT for `convert-web-article-to-md`**: it is a retrieval/reading layer, not a conversion layer, and its page-render screenshots are lower fidelity than the original assets the skill fetches (see 2026-09-27 session lessons: original-asset bytes beat page renders; element screenshots hit lazy-load placeholders; pix2tex OCR unusable on rendered math — vision-LLM transcription is the working path). **Fit:** index converted articles (`workspace/`, wiki) so the wiki can answer chart/table questions. **Pilot:** `uv tool install pixelrag` (light) → `pip install 'pixelrag[embed,serve]'` (PyTorch + FAISS — heavy; wants GPU/MPS, unverified on this box) → index a handful of converted articles → ask chart questions → judge answer quality. **Caveats:** verify license type before dependency commit; hosted API (api.pixelrag.ai) is Wikipedia-only, so our docs require self-hosting.
 
 ## Memory files and git
 

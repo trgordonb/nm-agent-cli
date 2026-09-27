@@ -123,6 +123,88 @@ skim the produced `.md` yourself: front matter present, first and last
 sections are article content (not Subscribe/cookie boilerplate), math
 delimiters visually paired, every fence has a language tag.
 
+## Cloudflare-protected and bot-blocked sites
+
+Some sites serve an HTTP 403/429 or a "Just a moment…" challenge page to
+scripted fetchers (the script fails loudly at the fetch step). Don't fight the
+wall — rescue the rendered HTML with the **browser-act** skill, which pulls
+pages through Cloudflare without opening a session:
+
+1. Invoke the `browser-act` skill first (its own contract requires loading it
+   before any CLI command), then fetch the page through the anti-bot layer:
+
+   ```bash
+   browser-act stealth-extract <url> --content-type html > workspace/<slug>.html
+   ```
+
+2. Verify the capture is a complete page before converting: it ends with
+   `</html>`, holds article markers (headings, paragraphs), and contains no
+   challenge text (`Just a moment`, `cf_chl`, `challenge-platform`). Convert
+   only a complete capture.
+
+3. Run this skill's script on the saved file (see the JavaScript-rendered
+   section below for why the DOM path is fine here).
+
+Field-tested quirks (alphaarchitect.com, 2026-09):
+
+- The stealth-extracted HTML carries no `<title>`/og:title, so front matter may
+  come out "Untitled article" — restore the site's own `<h1>` (check it isn't
+  truncated against the heading's anchor slug).
+- Image CDNs stay Cloudflare-gated, so the report's `image download failed`
+  warning leaves absolute URLs in the `.md` — the sanctioned fallback. To
+  localize the image anyway, a full browser-act session is needed (browser
+  creation → its Confirmation Gate). Use `--headed`: headless local Chrome gets
+  fingerprinted by bot walls, headed mode clears Cloudflare automatically. Then
+  `media resources download` the asset into `media/` and fix the link.
+
+## Math rendered as images (opt-in: `--math-images`)
+
+Some articles bake every equation into an image, usually with empty `alt`
+(no TeX to recover) — alphaarchitect.com's "Trend-Following Filters" series
+is the canonical case. The script cannot transcribe pixels; run the
+conversion with the opt-in flag and the vision pass becomes a two-stage
+contract between the script and you:
+
+```bash
+uv run python skills/convert-web-article-to-md/scripts/convert_web_article_to_md.py \
+    <url-or-file> --math-images
+```
+
+The script's stage: detect candidates (URL/alt matching
+equation/formula/math/latex/codecogs/eqn), download each into `media/` —
+direct first, then the Wayback Machine (exact snapshot, else the widest
+archived `-WxH` scaled variant via CDX) — and write `<slug>/math-images.json`
+plus a `Math imgs:` report line. Wayback can be flaky or rate-limit under
+repeated runs; a `blocked` status after one run may succeed on retry.
+
+Your stage (cannot be scripted — this is the vision LLM's job):
+
+1. For each manifest entry with a local file, upscale 3× (Lanczos) before
+   reading — native equation PNGs misread.
+2. Read the upscaled image and transcribe to `$$...$$` under the fidelity
+   rules in `references/math-and-code-rules.md` §6 (faithful notation,
+   cross-check against the prose, cheap sanity checks, never invent).
+3. Patch the markdown: replace the image's line with the LaTeX block, keep
+   the image in `media/` as provenance, and extend the front-matter
+   `math-transcription:` line.
+4. `blocked` entries exist only behind the site's bot wall. Rescue tiers,
+   cheapest first:
+   - **agent-browser (local Chrome, no gate):** launch headed with the
+     automation flag off so the Cloudflare challenge clears unattended —
+     `AGENT_BROWSER_ARGS="--disable-blink-features=AutomationControlled" agent-browser --headed open <page-url>`
+     (headless is still fingerprint-detected) — then pull each asset with an
+     in-page `eval` async IIFE: `fetch(<asset-url>, {credentials: "include"})`
+     → `btoa` the bytes → decode the JSON-wrapped output into the file.
+     Field-tested on alphaarchitect (equation PNGs that 403'd curl).
+   - **browser-act session:** escalate here only if agent-browser is still
+     blocked — free `chrome` type with `--headed` (headed clears Cloudflare
+     where headless gets fingerprint-blocked), `stealth` only if headed is
+     blocked. See the Confirmation Gate in "Cloudflare-protected and
+     bot-blocked sites" above; scroll the article to trigger lazy-load, find
+     the asset with `media resources list`, pull it with
+     `media resources download --output media/…`.
+   Then continue at step 1.
+
 ## JavaScript-rendered pages (math/code absent from raw HTML)
 
 Some sites render the article, the math, or the code only client-side. The
@@ -131,8 +213,10 @@ tell: `raw.html` contains no math markers (`\(`, `\begin{`, `math/tex`,
 script cannot recover what isn't in the HTML — render the page in a real
 browser first:
 
-1. Use the `browser-use:control-browser` skill to open the URL and let it
-   finish rendering.
+1. Render the page in a real browser and let it finish — the `browser-act`
+   skill is the lightest option (`stealth-extract <url> --content-type html`,
+   no session needed; see the Cloudflare section above); the
+   `browser-use:control-browser` skill works too.
 2. Save the rendered DOM (post-JS HTML) to a file, e.g.
    `workspace/<slug>.html`.
 3. Run this skill's script on that file. Note the saved DOM carries
@@ -146,9 +230,9 @@ around the wall.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `HTTP 403/429` error at fetch | The site blocks scripted requests | Render and save the page in a browser (see above), convert the saved file |
+| `HTTP 403/429` error at fetch | The site blocks scripted requests (Cloudflare et al.) | Invoke the `browser-act` skill and rescue with `stealth-extract <url> --content-type html` (see "Cloudflare-protected and bot-blocked sites"), then convert the saved file |
 | Output is tiny/empty | Wrong content container detected on an unusual layout | Open `raw.html`, find the article wrapper's class/id; if it's beyond quick manual fixes, extract the body by hand using the reference doc's rules |
-| Equations appear as images | Math baked into `<img>` (no TeX in the page) | Transcribe display equations to LaTeX manually; the `alt` text often holds the TeX |
+| Equations appear as images | Math baked into `<img>` (no TeX in the page) | If `alt` holds the TeX, use it directly; otherwise rerun with `--math-images` and follow "Math rendered as images" (vision transcription) |
 | `unconverted \( / \[ math remains` warning | Regex missed a nested/unusual span | Convert those spans by hand in the `.md`: `\(...\)` → `$...$`, `\[...\]` → `$$...$$` (see reference doc) |
 | Mangled rendered-text math soup (e.g. `EWMAt=(1−λ)×Yt+...EWMA_t = ...`) | KaTeX variant with no `<annotation>` (some WordPress plugins): TeX sits as trailing text inside `<math>` | Fixed in-script: TeX recovered from the `<math>` tail; for older runs, transcribe from the `<span class="katex-mathml"><math>...` block in `raw.html` |
 | All article figures missing, `Images: N chrome/ads dropped` | Notebook posts embed figures as base64 `data:image/png;base64,` URIs | Fixed in-script: data-URI PNG/JPEG figures are decoded into `media/`. If the decode fails, the report lists each failure under Needs attention |
@@ -165,8 +249,9 @@ around the wall.
 
 - **Client-side-only content** needs the browser-render pass above; the
   script fails loudly (empty math/code counts) rather than pretending.
-- **Math-as-images** without TeX in `alt` text can't be transcribed
-  automatically — flag those to the user.
+- **Math-as-images** without TeX in `alt` text: transcribable via the opt-in
+  `--math-images` flow (the agent's vision pass — see its section above);
+  without that flag they are flagged to the user, not auto-converted.
 - **Embedded iframes** (videos, calculators) become `[embedded content: url]`
   links, not embeds.
 - Base64 `data:image/png;base64,` / `data:image/jpeg;base64,` figures are

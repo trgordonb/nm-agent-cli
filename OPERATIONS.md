@@ -70,7 +70,7 @@ The agent uses the `llm-wiki` skill to:
 
 ---
 
-## 3. Keep the wiki healthy — lint
+## 4. Keep the wiki healthy — lint
 
 ```bash
 uv run --script skills/llm-wiki/scripts/wiki_lint.py wiki/
@@ -80,7 +80,7 @@ Flags missing `[[wikilinks]]` in the index, orphan pages (nothing references the
 
 ---
 
-## 4. Graph layer — `graph.relationships` frontmatter
+## 5. Graph layer — `graph.relationships` frontmatter
 
 If the user authored typed edges (e.g. `authored`, `works_on`, `depends_on`) in a page's `graph.relationships[]` frontmatter, run:
 
@@ -93,27 +93,32 @@ Then merge into `wiki/graph/nodes.jsonl` and `edges.jsonl`, generate the matchin
 
 ---
 
-## 5. Visualize the wiki graph
+## 6. Browse the wiki live — wiki-os
+
+wiki-os (`wiki-os/` in the repo root, cloned from **[trgordonb/wiki-os](https://github.com/trgordonb/wiki-os)** — a fork of [Ansub/wiki-os](https://github.com/Ansub/wiki-os)) renders the vault as a local web app: article pages with working `[[wikilinks]]`, full-text search, an interactive link-graph view, and an auto-reindex file watcher. It reads the vault read-only — edits still happen in Obsidian or an editor.
+
+**Clone the fork, not upstream:** the fork's `main` carries the graph-edge patch (resolves bare `[[wikilink]]` targets to folder-qualified page slugs — `overfitting` → `concepts/overfitting` — and refreshes backlink counts). Upstream `Ansub/wiki-os` does not: a vault with subfolder pages would render a graph of orphan nodes and dead wikilinks.
+
+One-time setup:
 
 ```bash
-uv run --script skills/llm-wiki/scripts/wiki_graph_query.py wiki/ neighbors --node concept:mean-reversion
+git clone https://github.com/trgordonb/wiki-os.git wiki-os
+cd wiki-os && npm install && npm run build
 ```
 
 ```bash
-uv run --script skills/llm-wiki/scripts/wiki_graph_visualize.py wiki/ --node-limit 0
+./start.sh          # wiki-os in background + agent in foreground (URL shown in the agent banner)
+./start.sh wiki     # only the wiki-os web UI, then exit
 ```
 
-Produces two outputs under `wiki/graph/`:
-- `graph-overview.mmd` — Mermaid flowchart (renders **only** inside a fenced code block in a `.md` file in Obsidian / GitHub / typora; the `.mmd` is a Mermaid-CLI / GitHub integrations artifact)
-- `index.html` — self-contained interactive page (vis-network via CDN): drag physics, predicate-labeled edges, live title filter, click = typed-edge provenance
-
-Both stay in `wiki/graph/` (local-only by default; push if you want a hosted copy).
-
-Additional visual check — raise the top-N result cap with `--node-limit 0` to fill the Mermaid not-truncated (full graph when large wikis). The re-generation default is `node_limit=0` (0 = full graph): the agent will start with that and cut back if the outer page renders too long.
+- URL: `http://localhost:5211` (override with `WIKI_OS_PORT`; vault override with `WIKI_ROOT`, default `./wiki`)
+- The server survives agent exits; stop it with `pkill -f "dist-server/server/server[.]js"`; logs at `wiki-os/wiki-os.log`
+- Index lives in `~/.wiki-os/` — safe to delete, it rebuilds on next start
+- To pull future fixes: `cd wiki-os && git pull && npm install && npm run build`
 
 ---
 
-## 6. Loop it back to the agent
+## 7. Loop it back to the agent
 
 The graph.sqlite path for hybrid sampling (`wiki/.wiki-cache/`) is the operative cache used in `wiki_search` and `build_context`. Any pre-flight retrieval starts by loading `wiki/index.md`, then candidates listed in `index.md` — always check freshness against `wiki/log.md`; if an ingest or graph run happened, the agent runs `wiki_graph_extract.py` before querying.
 
@@ -126,6 +131,7 @@ The graph.sqlite path for hybrid sampling (`wiki/.wiki-cache/`) is the operative
 | `wiki/` — contents only (`index.md`, `SCHEMA.md`, `log.md`, `sources/`, `entities/`, `concepts/`, `synthesis/`, `graph/`, `.wiki-cache/`) | Agent bootstrap | Every clone bootstraps its own from your own material; only folder shells match upstream |
 | `raw/`, `skills/`, `memories/` contents | Skeleton tracked (.gitkeep + empty placeholder) | Same local-only reason |
 | `wiki/.obsidian/` | Obsidian vault open | Local config folder |
+| `wiki-os/` | Cloned [web UI](https://github.com/trgordonb/wiki-os) for the wiki | Separate repo (own fork — carries the graph-edge patch, see §6). Its index lives in `~/.wiki-os/` |
 | agent.log, sessions.db | Runtime | Large/volatile diagnostics |
 
 Clone the repo → `uv lock --upgrade-package nm-memory-layer` → `uv sync` → `cp .env.example .env`, edit as above, then run `uv run python main.py` to bootstrap your own wiki. All artifacts are regenerated locally; nothing you add to the wiki folder needs to leave the machine.

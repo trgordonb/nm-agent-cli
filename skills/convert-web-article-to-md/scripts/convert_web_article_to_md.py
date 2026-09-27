@@ -38,7 +38,7 @@ import re
 import sys
 from datetime import date, datetime
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
@@ -49,6 +49,11 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 )
 TIMEOUT = 30
+
+# URL/alt substrings that suggest an equation rendered as an image (opt-in
+# --math-images). Over-matching is fine: the manifest carries alt + url so
+# the agent can discard false positives; missing a real formula is worse.
+MATH_IMG_PAT = re.compile(r"equation|formula|codecogs|latex|eqn|math", re.I)
 
 # Class/id/url substrings that mark site chrome rather than article content.
 CHROME_PAT = re.compile(
@@ -143,9 +148,12 @@ def fetch_url(url: str) -> str:
         raise ConversionError(f"fetch failed: {exc}") from exc
     if resp.status_code in (401, 403, 429, 503):
         raise ConversionError(
-            f"HTTP {resp.status_code} from {url} — the site is blocking scripts. "
-            "Open the page in a real browser (or the browser-use skill), save the "
-            "rendered DOM to an .html file, and convert the file instead."
+            f"HTTP {resp.status_code} from {url} — the site is blocking scripts "
+            "(likely Cloudflare). Rescue path: invoke the browser-act skill, then "
+            f"fetch the rendered page with 'browser-act stealth-extract {url} "
+            f"--content-type html > {derive_slug(url, '')}.html', verify the file ends with "
+            "</html> and is not a 'Just a moment...' challenge page, then re-run "
+            "this script on that .html file."
         )
     resp.raise_for_status()
     if not resp.encoding or resp.encoding.lower() == "iso-8859-1":
@@ -581,6 +589,109 @@ def download_image(url: str, media_dir: Path, seen_names: set[str]) -> str | Non
         return name
     except requests.RequestException:
         return None
+
+
+def _image_magic(content: bytes) -> bool:
+    return content[:8] == b"\x89PNG\r\n\x1a\n" or content[:4] in (
+        b"GIF8", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"RIFF")
+
+
+def wayback_targets(url: str) -> list[tuple[str, str]]:
+    """(original_url, timestamp) pairs to try on the Wayback Machine: the
+    exact-URL snapshot first, then the widest archived `-WxH` scaled variant
+    of the same image stem (sites archive the responsive srcset sizes even
+    when the full-size file was never captured)."""
+    out: list[tuple[str, str]] = []
+    try:
+        resp = requests.get(
+            f"http://archive.org/wayback/available?url={quote(url, safe='')}",
+            timeout=TIMEOUT)
+        closest = resp.json().get("archived_snapshots", {}).get("closest", {})
+        if closest.get("timestamp"):
+            out.append((url, closest["timestamp"]))
+        p = urlparse(url)
+        stem, ext = Path(p.path).stem, Path(p.path).suffix
+        if re.search(r"-\d+x\d+$", stem):  # already a variant URL
+            return out
+        prefix = f"{p.scheme}://{p.netloc}{Path(p.path).parent.as_posix()}/{stem}"
+        resp = requests.get(
+            f"http://web.archive.org/cdx/search/cdx?url={quote(prefix, safe='/:.')}"
+            f"&matchType=prefix&output=json&limit=50", timeout=TIMEOUT)
+        best: tuple[int, str, str] | None = None
+        for row in resp.json()[1:]:
+            vpath = urlparse(row[2]).path
+            m = re.fullmatch(
+                rf"{re.escape(stem)}-(\d+)x\d+{re.escape(ext)}", Path(vpath).stem)
+            if m and (best is None or int(m.group(1)) > best[0]):
+                best = (int(m.group(1)), row[2], row[1])
+        if best:
+            out.append((best[1], best[2]))
+    except (requests.RequestException, ValueError, IndexError):
+        pass
+    return out
+
+
+def wayback_fetch(url: str, media_dir: Path, seen_names: set[str]) -> tuple[str, str] | None:
+    """Fetch a site-blocked image from the Wayback Machine; returns
+    (local filename, snapshot timestamp) or None."""
+    for orig, ts in wayback_targets(url):
+        try:
+            resp = requests.get(
+                f"http://web.archive.org/web/{ts}id_/{orig}",
+                headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
+            ctype = resp.headers.get("content-type", "").split(";")[0].strip()
+            if not (resp.ok and (ctype.startswith("image/") or _image_magic(resp.content))):
+                continue
+            stem = re.sub(r"[\W_]+", "-", Path(urlparse(orig).path).stem).strip("-")[:60] or "image"
+            ext = EXT_BY_TYPE.get(ctype) or Path(urlparse(orig).path).suffix or ".png"
+            name = f"{stem}{ext}"
+            n = 2
+            while name in seen_names or (media_dir / name).exists():
+                name = f"{stem}-{n}{ext}"
+                n += 1
+            media_dir.mkdir(parents=True, exist_ok=True)
+            (media_dir / name).write_bytes(resp.content)
+            seen_names.add(name)
+            return name, ts
+        except requests.RequestException:
+            continue
+    return None
+
+
+def collect_math_images(document: str, media_dir: Path,
+                        no_media: bool) -> tuple[list[dict], list[str]]:
+    """Opt-in --math-images pass: find equations rendered as images, download
+    what is fetchable (direct, then Wayback Machine), and return the manifest
+    plus warnings. Transcription itself is the agent's vision job (SKILL.md)."""
+    candidates: list[dict] = []
+    seen_urls: set[str] = set()
+    seen_names: set[str] = set()
+    media_dir.mkdir(parents=True, exist_ok=True)
+    for alt, url in re.findall(r"!\[([^\]]*)\]\(([^)\s]+)\)", document):
+        if not url.startswith(("http://", "https://")) or url in seen_urls:
+            continue
+        if not (MATH_IMG_PAT.search(url) or MATH_IMG_PAT.search(alt)):
+            continue
+        seen_urls.add(url)
+        entry = {"url": url, "alt": alt, "status": "blocked", "file": None, "note": None}
+        if no_media:
+            entry["status"] = "not-fetched"
+        else:
+            local = download_image(url, media_dir, seen_names)
+            if local:
+                entry["status"], entry["file"] = "downloaded", f"media/{local}"
+            else:
+                got = wayback_fetch(url, media_dir, seen_names)
+                if got:
+                    entry["status"] = "downloaded-wayback"
+                    entry["file"] = f"media/{got[0]}"
+                    entry["note"] = f"snapshot {got[1]}"
+        candidates.append(entry)
+    warnings = [
+        f"math image unreachable (direct + Wayback failed): {c['url']} — "
+        "rescue via a browser-act session (SKILL.md, 'Math rendered as images')"
+        for c in candidates if c["status"] == "blocked"]
+    return candidates, warnings
 
 
 def absolutize_links(container: Tag, base_url: str | None) -> int:
@@ -1077,7 +1188,8 @@ def derive_slug(source: str, title: str) -> str:
 # Per-article driver
 # --------------------------------------------------------------------------
 
-def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str = "auto") -> int:
+def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str = "auto",
+                math_images: bool = False) -> int:
     is_remote = is_url(source)
     if is_remote:
         raw_html = fetch_url(source)
@@ -1164,6 +1276,14 @@ def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str 
     warnings.extend(f"missing media file: {m}" for m in check_media(document, out_dir))
     warnings.extend(img_notes)
 
+    # ---- opt-in: equations rendered as images (vision transcription is the agent's job) ----
+    math_manifest: list[dict] | None = None
+    if math_images:
+        math_manifest, math_warnings = collect_math_images(document, out_dir / "media", no_media)
+        warnings.extend(math_warnings)
+        (out_dir / "math-images.json").write_text(
+            json.dumps(math_manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+
     # ---- report ----
     n_display, n_inline = count_math_spans(document)
     print("=" * 72)
@@ -1177,6 +1297,14 @@ def convert_one(source: str, parent_dir: Path, no_media: bool, source_mode: str 
           f"{n_mathish} _/^ math chars protected")
     print(f"Code:      {n_code} fenced block(s)")
     print(f"Images:    {saved_imgs} saved to media/, {dropped_imgs} chrome/ads dropped")
+    if math_manifest is not None:
+        by: dict[str, int] = {}
+        for c in math_manifest:
+            by[c["status"]] = by.get(c["status"], 0) + 1
+        print(f"Math imgs: {len(math_manifest)} candidate(s): "
+              f"{by.get('downloaded', 0)} direct, {by.get('downloaded-wayback', 0)} wayback, "
+              f"{by.get('blocked', 0)} blocked, {by.get('not-fetched', 0)} not-fetched "
+              f"→ manifest math-images.json")
     print(f"Chrome:    {removed_chrome} boilerplate block(s) removed")
     if cta_note:
         print(f"           {cta_note}")
@@ -1202,6 +1330,11 @@ def main(argv: list[str]) -> int:
                              "directory for local .html inputs)")
     parser.add_argument("--no-media", action="store_true",
                         help="skip downloading images (keep absolute URLs)")
+    parser.add_argument("--math-images", action="store_true",
+                        help="detect equations rendered as images, download what is "
+                             "fetchable (direct, then Wayback Machine) into media/, "
+                             "and write a math-images.json manifest for the agent's "
+                             "vision-transcription pass (see SKILL.md)")
     parser.add_argument("--source", choices=("auto", "dom", "blob"), default="auto",
                         help="conversion source: auto prefers the site's embedded "
                              "hydration markdown and falls back to the rendered DOM "
@@ -1217,7 +1350,7 @@ def main(argv: list[str]) -> int:
             parent = Path(args.output or Path(source).expanduser().resolve().parent).expanduser()
         parent.mkdir(parents=True, exist_ok=True)
         try:
-            convert_one(source, parent, args.no_media, args.source)
+            convert_one(source, parent, args.no_media, args.source, args.math_images)
         except ConversionError as exc:
             failures += 1
             print(f"ERROR converting {source}: {exc}", file=sys.stderr)
