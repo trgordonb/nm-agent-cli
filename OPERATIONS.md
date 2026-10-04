@@ -93,28 +93,19 @@ Then merge into `wiki/graph/nodes.jsonl` and `edges.jsonl`, generate the matchin
 
 ---
 
-## 6. Browse the wiki live — wiki-os
+## 6. Browse the wiki live — web UI (server.py + React frontend)
 
-wiki-os (`wiki-os/` in the repo root, cloned from **[trgordonb/wiki-os](https://github.com/trgordonb/wiki-os)** — a fork of [Ansub/wiki-os](https://github.com/Ansub/wiki-os)) renders the vault as a local web app: article pages with working `[[wikilinks]]`, full-text search, an interactive link-graph view, and an auto-reindex file watcher. It reads the vault read-only — edits still happen in Obsidian or an editor.
-
-**Clone the fork, not upstream:** the fork's `main` carries the graph-edge patch (resolves bare `[[wikilink]]` targets to folder-qualified page slugs — `overfitting` → `concepts/overfitting` — and refreshes backlink counts). Upstream `Ansub/wiki-os` does not: a vault with subfolder pages would render a graph of orphan nodes and dead wikilinks.
-
-One-time setup:
+The wiki is served by the **in-process Python engine** (`wiki_engine/`, mounted at `/wapi/api/*` inside `server.py`) — the wiki-os Node engine this replaced is archived at `workspace/wiki-archive/` (its graph-edge patch was ported: bare `[[wikilink]]` targets resolve to folder-qualified slugs). The React frontend (`frontend/`, Vite) renders Chat, the Wiki tab (search/notes/graph/stats), and the settings view (Skills | MCP).
 
 ```bash
-git clone https://github.com/trgordonb/wiki-os.git wiki-os
-cd wiki-os && npm install && npm run build
+uv run python server.py      # FastAPI on :8000 (agent + wiki engine)
+cd frontend && npm run dev   # Vite dev server on :5173 (proxies /api and /wapi to :8000)
 ```
 
-```bash
-./start.sh          # wiki-os in background + agent in foreground (URL shown in the agent banner)
-./start.sh wiki     # only the wiki-os web UI, then exit
-```
-
-- URL: `http://localhost:5211` (override with `WIKI_OS_PORT`; vault override with `WIKI_ROOT`, default `./wiki`)
-- The server survives agent exits; stop it with `pkill -f "dist-server/server/server[.]js"`; logs at `wiki-os/wiki-os.log`
-- Index lives in `~/.wiki-os/` — safe to delete, it rebuilds on next start
-- To pull future fixes: `cd wiki-os && git pull && npm install && npm run build`
+- URL: `http://localhost:5173`
+- The engine indexes the vault at startup (fast for personal vaults) and re-checks mtimes on a 10 s poll; force a rebuild with `POST /wapi/api/admin/reindex` (optional `WIKIOS_ADMIN_TOKEN`)
+- Index lives in `~/.wiki-os-py/` — safe to delete, it rebuilds on next start
+- Production-style serving: `cd frontend && npm run build` then point a static host at `frontend/dist/` with `/api` + `/wapi` routed to `:8000`
 
 ---
 
@@ -124,14 +115,45 @@ The graph.sqlite path for hybrid sampling (`wiki/.wiki-cache/`) is the operative
 
 ---
 
+## 8. Skills registry — operations
+
+Skills are stored in a Cloudflare R2 bucket (`SKILLS_REGISTRY=s3://neuralmatrix` + `R2_*` in `.env`); `skills/` in the repo is a write-through mirror and `skills/state/` does not exist — toggle state lives in the bucket at `state/users/<user>/skills.json`.
+
+```bash
+uv run nm-skills list            # all skills with ✓/✗ enabled state (live from the bucket)
+uv run nm-skills doctor          # connectivity, mirror drift, disabled list
+uv run nm-skills disable <name>  # invisible to index/load_skill until re-enabled
+uv run nm-skills import skills   # (re)push a local tree into the registry
+uv run nm-skills pull skills     # refresh the local mirror from the bucket
+uv run nm-skills sync raw        # raw/ is bucket-backed too (explicit sync, no auto-pull)
+```
+
+- The mirror is offline-tolerant: if R2 is unreachable, the agent serves last-known skills and `doctor` reports the error.
+- Toggles (UI gear → Skills, REST `POST /api/skills/{name}/enabled`, `skill_manage(enable|disable)`) apply to the **next session** — the skills index is injected once per session.
+- Bucket versioning is the undo button for bad writes; `git tag skills-in-git-final` is the last commit carrying `skills/` content.
+
+## 9. MCP servers — operations
+
+Servers are configured in `mcp_servers.json` (git-tracked; secrets as `${VAR}` interpolated from the environment — fail-closed if unset). Toggle in the UI (gear → MCP), or:
+
+```bash
+curl -s localhost:8000/api/mcp | python3 -m json.tool   # servers + connection status
+curl -s -X POST localhost:8000/api/mcp/luxalgo/enabled \
+     -H 'Content-Type: application/json' -d '{"enabled": false}'
+curl -s -X POST localhost:8000/api/mcp/reload           # re-assemble the runtime
+```
+
+- Reload is refused with 409 while a turn is streaming; otherwise the next chat uses the new tool set. The CLI agent picks changes up at its next session.
+- `keep_tools` filters which of a server's tools get bound (suffix-matched under the server prefix) — e.g. luxalgo keeps only its 9 `library_*` + 4 `trackers_*` tools out of 48.
+
 ## What stays off GitHub
 
 | Folder / file | Created | Why it is kept |
 |---|---|---|
 | `wiki/` — contents only (`index.md`, `SCHEMA.md`, `log.md`, `sources/`, `entities/`, `concepts/`, `synthesis/`, `graph/`, `.wiki-cache/`) | Agent bootstrap | Every clone bootstraps its own from your own material; only folder shells match upstream |
-| `raw/`, `skills/`, `memories/` contents | Skeleton tracked (.gitkeep + empty placeholder) | Same local-only reason |
+| `raw/`, `memories/` contents | Skeleton tracked (.gitkeep + empty placeholder) | Same local-only reason |
+| `skills/` (contents) | Mirror of the R2 registry | Authoritative copy lives in the bucket; the mirror is a cache (see §8) |
 | `wiki/.obsidian/` | Obsidian vault open | Local config folder |
-| `wiki-os/` | Cloned [web UI](https://github.com/trgordonb/wiki-os) for the wiki | Separate repo (own fork — carries the graph-edge patch, see §6). Its index lives in `~/.wiki-os/` |
-| agent.log, sessions.db | Runtime | Large/volatile diagnostics |
+| agent.log, sessions.db, `state/`, `.nm-skills-registry-index.json` | Runtime | Large/volatile or cache/diagnostic artifacts |
 
-Clone the repo → `uv lock --upgrade-package nm-memory-layer` → `uv sync` → `cp .env.example .env`, edit as above, then run `uv run python main.py` to bootstrap your own wiki. All artifacts are regenerated locally; nothing you add to the wiki folder needs to leave the machine.
+Clone the repo → `uv sync` → `cp .env.example .env`, edit as above, then run `uv run python main.py` to bootstrap your own wiki. All artifacts are regenerated locally; nothing you add to the wiki folder needs to leave the machine.

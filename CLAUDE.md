@@ -36,6 +36,10 @@ Current phase: **All five phases complete — session store, prompt memory, nudg
 - **llm-wiki** — vault bootstrap, ingest, lint, and graph extraction for `wiki/` (see OPERATIONS.md §2–§5, §8).
 - **edgar** (SEC filings via EdgarTools), **financial-toolkits** (FMP-backed analytics), **tradedesk-dukascopy** (tick-data pipelines) — the original research toolchain.
 
+## MCP servers
+
+Configured in **`mcp_servers.json`** (repo root, git-tracked — see `MCP_TOGGLE_PLAN.md`): per-server `transport`/`command`/`args`/`env`/`url`/`headers`, `enabled` flag, optional `keep_tools`. Secrets are `${VAR}`-interpolated from the environment at load (fail-closed on unresolved). `_load_mcp_tools()` (`main.py`) connects each enabled server independently (one bad server = warning + skip) and reports per-server status into the runtime (`mcp_report`). Toggles: web UI **gear icon** (sidebar footer) → Settings → Skills | MCP, or `GET/POST /api/mcp*` — edits the JSON atomically and apply after **Reload runtime** (`POST /api/mcp/reload`, 409 while turns stream) on the server, or at the next CLI session. `finance_toolkit` (FMP-backed) is configured but disabled.
+
 ## Commands
 
 ```bash

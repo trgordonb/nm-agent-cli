@@ -1,7 +1,11 @@
 # Skills Registry Plan — S3-backed, per-user enable/disable (Option A)
 
-Status: **draft for review** · 2026-10-03
+Status: **implemented 2026-10-04** · planned 2026-10-03
 Feasibility study: conversation 2026-10-03 (full filesystem inventory of `skills/`, `wiki/`, `workspace/`, `raw/`, `memories/` across this repo and `nm-memory-layer`).
+
+## Outcome (2026-10-04)
+
+Shipped as planned, with these resolved decisions: name `nm-skills-registry` (pushed to GitHub, tagged `v0.1.0`/`v0.1.1`), obstore as the client, REST + `skill_manage(enable|disable)` + CLI as the toggle surface (React UI ships in this repo's settings view), "next session" toggle semantics, explicit-CLI-only sync for `raw/`. Added during rollout: `CachedStore.get_with_etag` revalidates against a fresh HEAD (v0.1.1 — a stale index ETag looped CAS retries after out-of-band writes, surfacing as a 500 on the browser toggle; regression-tested), `nm-memory-layer`'s `SkillLibrary` is a delegating facade (byte-parity verified on the real tree), git stopped tracking `skills/` at tag `skills-in-git-final`, and 149 skill + 716 `raw/` objects were imported to the bucket. Operations: `OPERATIONS.md` §8; day-to-day via `uv run nm-skills …` and the web UI gear → Skills.
 
 ## 1. Goals and non-goals
 
