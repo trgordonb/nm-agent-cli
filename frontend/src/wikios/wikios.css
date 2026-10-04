@@ -1,0 +1,297 @@
+/* Wiki tab styles, ported from wiki-os src/client/globals.css (MIT).
+ *
+ * Adaptations:
+ *  - Tailwind v4 is imported WITHOUT preflight (theme + utilities layers only)
+ *    so the chat shell's own CSS keeps full authority.
+ *  - Every wiki-os custom class is scoped under `.wikios`, and the pastel
+ *    light palette is remapped to the app's dark GitHub-ish theme.
+ *  - Web fonts load via index.html <link> tags (Playfair Display, Urbanist).
+ */
+
+@layer base, theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "highlight.js/styles/github-dark.css";
+
+/* Minimal preflight substitute, scoped to the wiki tab: Tailwind preflight is
+   deliberately not imported (it would reset the chat shell), but the ported
+   views assume buttons/inputs start unstyled. Lives in the base layer so any
+   utility class still wins over it. */
+@layer base {
+  .wikios :where(button, input, textarea, select) {
+    font: inherit;
+    color: inherit;
+    letter-spacing: inherit;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+  }
+
+  .wikios :where(button, [role="button"]) {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+}
+
+.wikios {
+  /* Dark remap of the wiki-os palette (upstream pastel values in comments) */
+  --background: #0f141b;            /* #faf7f3 */
+  --background-tint: #10161d;       /* #f4e9e0 */
+  --foreground: #e6edf3;            /* #15131a */
+  --card: #161b22;                  /* #ffffff */
+  --card-foreground: #e6edf3;
+  --popover: #161b22;
+  --popover-foreground: #e6edf3;
+
+  --teal: #85b9c9;
+  --teal-soft: rgba(133, 185, 201, 0.16);   /* #d4ebf2 */
+  --peach: #f4b183;
+  --peach-soft: rgba(244, 177, 131, 0.14);  /* #fde5d0 */
+  --lavender: #c4a7e7;
+  --lavender-soft: rgba(196, 167, 231, 0.14); /* #ece2f7 */
+
+  --primary: #e6edf3;               /* #15131a */
+  --primary-foreground: #0d1117;    /* #faf7f2 */
+  --secondary: #1b232c;             /* #f1ede6 */
+  --secondary-foreground: #e6edf3;
+  --muted: #1b232c;
+  --muted-foreground: #8b949e;      /* #6b6673 */
+  --accent: rgba(196, 167, 231, 0.14);
+  --accent-foreground: #e6edf3;
+  --border: rgba(230, 237, 243, 0.1);
+  --ring: rgba(133, 185, 201, 0.45);
+
+  --font-sans: "Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Playfair Display", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-reading: "Inter", "Urbanist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  scrollbar-width: none;
+}
+
+.wikios ::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/* Native-app feel from upstream: no text selection on chrome, selection in prose */
+.wikios header,
+.wikios button,
+.wikios [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.wikios .prose-wiki,
+.wikios .prose-wiki * {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
+
+.wikios :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.wikios .font-display {
+  font-family: var(--font-display);
+  font-weight: 300;
+}
+
+/* ── Prose (wiki article body) ── */
+
+.wikios .prose-wiki {
+  color: var(--foreground);
+  font-family: var(--font-reading);
+  font-size: 15px;
+  letter-spacing: -0.011em;
+}
+
+.wikios .prose-wiki a {
+  color: #7ab0c4;                   /* #4a6b8f */
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(133, 185, 201, 0.5);
+  text-decoration-thickness: 1.5px;
+  transition: text-decoration-color 150ms var(--ease-out);
+}
+
+.wikios .prose-wiki a:hover {
+  text-decoration-color: var(--teal);
+}
+
+.wikios .prose-wiki h1,
+.wikios .prose-wiki h2,
+.wikios .prose-wiki h3,
+.wikios .prose-wiki h4 {
+  color: var(--foreground);
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: -0.02em;
+}
+
+.wikios .prose-wiki h2 {
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.wikios .prose-wiki pre {
+  overflow-x: auto;
+  border-radius: 1rem;
+  border: 1px solid var(--border);
+  background: #131920;              /* #1a1825 */
+  padding: 1.25rem;
+  box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.5);
+}
+
+.wikios .prose-wiki code:not(pre code) {
+  border-radius: 0.4rem;
+  background: var(--lavender-soft);
+  color: #d6c7f2;                   /* #5b4a7a */
+  padding: 0.15rem 0.4rem;
+  font-size: 0.9em;
+  font-weight: 500;
+}
+
+.wikios .prose-wiki blockquote {
+  border-left: 3px solid var(--teal);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+  background: linear-gradient(90deg, var(--teal-soft), transparent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+/* ── Glass surfaces (dark remap of the white-glass originals) ── */
+
+.wikios .surface {
+  background: rgba(22, 27, 34, 0.72);
+  backdrop-filter: blur(20px) saturate(1.1);
+  -webkit-backdrop-filter: blur(20px) saturate(1.1);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 8px 24px -12px rgba(0, 0, 0, 0.35);
+}
+
+.wikios .surface-raised {
+  background: rgba(22, 27, 34, 0.92);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 12px 40px -16px rgba(0, 0, 0, 0.55),
+    0 4px 12px -6px rgba(196, 167, 231, 0.12);
+}
+
+/* ── Accent chips ── */
+
+.wikios .chip-teal {
+  background: var(--teal-soft);
+  color: #a5d3e0;                   /* #3e6978 */
+  border: 1px solid rgba(133, 185, 201, 0.35);
+}
+
+.wikios .chip-peach {
+  background: var(--peach-soft);
+  color: #f4c4a5;                   /* #9a5a2f */
+  border: 1px solid rgba(244, 177, 131, 0.35);
+}
+
+.wikios .chip-lavender {
+  background: var(--lavender-soft);
+  color: #d8c6f0;                   /* #5b4a7a */
+  border: 1px solid rgba(196, 167, 231, 0.35);
+}
+
+/* ── Motion (keyframes renamed to stay collision-free at top level) ── */
+
+@keyframes wikiosFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.wikios .animate-in {
+  animation: wikiosFadeInUp 500ms var(--ease-out) both;
+}
+
+.wikios .stagger-1 { animation-delay: 0ms; }
+.wikios .stagger-2 { animation-delay: 60ms; }
+.wikios .stagger-3 { animation-delay: 120ms; }
+.wikios .stagger-4 { animation-delay: 180ms; }
+.wikios .stagger-5 { animation-delay: 240ms; }
+.wikios .stagger-6 { animation-delay: 300ms; }
+.wikios .stagger-7 { animation-delay: 360ms; }
+.wikios .stagger-8 { animation-delay: 420ms; }
+
+.wikios .hover-lift {
+  transition: transform 250ms var(--ease-out), box-shadow 250ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .wikios .hover-lift:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 20px 40px -20px rgba(0, 0, 0, 0.5),
+      0 6px 16px -8px rgba(196, 167, 231, 0.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wikios *,
+  .wikios *::before,
+  .wikios *::after {
+    animation-duration: 0.15s !important;
+    transition-duration: 0.15s !important;
+  }
+
+  .wikios .animate-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── Table of Contents ── */
+
+.wikios .toc {
+  border-left: 1px solid var(--border);
+  padding-left: 1rem;
+}
+
+.wikios .toc-item {
+  position: relative;
+}
+
+.wikios .toc-item::before {
+  content: "";
+  position: absolute;
+  left: calc(-1rem - 1px);
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background-color 200ms ease;
+}
+
+.wikios .toc-item[class*="font-medium"]::before {
+  background: var(--teal);
+}
