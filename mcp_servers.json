@@ -63,6 +63,35 @@
       ],
       "enabled": false,
       "description": "LuxAlgo: indicator/library docs + market trackers (public, keyless; journal/brokers/account filtered out)"
+    },
+    "agentdb": {
+      "transport": "stdio",
+      "command": "./vendor/agentdb/node_modules/.bin/agentdb",
+      "args": [
+        "mcp",
+        "start"
+      ],
+      "env": {
+        "AGENTDB_PATH": "state/agentdb/agentdb.db"
+      },
+      "keep_tools": [
+        "agentdb_init",
+        "agentdb_stats",
+        "agentdb_pattern_store",
+        "agentdb_pattern_search",
+        "reflexion_store",
+        "reflexion_retrieve",
+        "skill_create",
+        "skill_search",
+        "reward_signal",
+        "learning_feedback",
+        "learning_start_session",
+        "learning_end_session",
+        "learning_metrics",
+        "consolidate_now"
+      ],
+      "enabled": true,
+      "description": "AgentDB pilot (alpha.20, pinned vendor install): Reflexion episodes + skill library + ReasoningBank + learning loop; SQLite store at state/agentdb (Gate 1 of RUVECTOR_AGENTDB_FEASIBILITY.md)"
     }
   }
 }

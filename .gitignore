@@ -49,3 +49,7 @@ state/
 # Frontend build artifacts
 frontend/node_modules/
 frontend/dist/
+
+# AgentDB MCP pilot (AGENTDB_MCP_PILOT_PLAN.md §2): pinned vendor install,
+# ~1 GB node_modules — only package.json + package-lock.json are committed
+vendor/agentdb/node_modules/

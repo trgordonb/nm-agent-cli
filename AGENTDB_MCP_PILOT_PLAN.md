@@ -221,3 +221,26 @@ printf '%s\n%s\n%s\n' \
 ```
 
 Then repeat the §5 sequence with `tools/call` lines. Any drift in names/schemas → update `keep_tools` and Appendix A before enabling.
+
+## Appendix C — enablement log (2026-10-04, branch `ruvector`)
+
+Steps §1–§5 executed. Nothing in `nm-memory-layer` or `nm-skills-registry` was touched.
+
+| Plan step | Outcome |
+|---|---|
+| §2 vendor install | `vendor/agentdb` @ `agentdb@3.0.0-alpha.20` exact-pinned (`package.json` + `package-lock.json` committed, `node_modules/` gitignored, ~1 GB on disk). npm postinstall scripts blocked by this box's `allow-scripts` policy — the smoke-test-verified working mode. CLI confirms `agentdb v3.0.0-alpha.20`. |
+| §3 config | `mcp_servers.json` `agentdb` entry added exactly as written in §3 (`enabled: true`), JSON validated. |
+| §4 loader verification | Ran the real path (`mcp_config.load_mcp_servers` → `MultiServerMCPClient` → `apply_keep_tools`) with the repo venv: config parses, env interpolated, **35 raw tools → exactly the 14 planned tools bound**, names matching Appendix A. `agent_browser` binds alongside with no name collisions. |
+| §5.1 `agentdb_init` | Server boot logged `✅ Database schema initialized` — the smoke test's init flakiness (fact #7) did **not** reproduce on this boot; schema came up clean. |
+| §5.2 `agentdb_stats` | Succeeded; counters visible (0 episodes pre-write, exactly 1 after — so the write was the only one). |
+| §5.3 `reflexion_store` | Bootstrap episode stored (`gate1-bootstrap`), with embedding. |
+| §5.4 `reflexion_retrieve` | **Semantic recall verified**: returned the bootstrap episode at similarity 0.746. First embed downloaded the MiniLM model (~89 MB) into `node_modules/@huggingface/transformers/.cache` (under gitignore; a fresh `npm ci` re-downloads on first embed). |
+| §5.5 stats re-check | Episodes: 1 ≥ 1 ✓ |
+| §5.6 snapshot | `state/agentdb/agentdb.bootstrap-snapshot.db` (152 KB) taken; main store `agentdb.db` 152 KB. |
+| §5 latency | **0.40 s** for spawn + initialize + tools/list (vendor-local binary; gate was <5 s). |
+
+**Operational notes discovered during enablement:**
+
+1. When driven by a naive `printf | server` handshake, the standalone server does **not** exit on stdin EOF after processing (the wrapper shim keeps the pipe alive). The langchain loader's session close shuts it down cleanly (observed in the §4 run), so this is a test-harness artifact, not a pilot blocker — but the Gate-2 sidecar must use a proper client close, not EOF-and-hope.
+2. `tools/list` reports 35 tools while the server's own banner advertises "32 tools available" — the banner miscounts; `tools/list` (what actually binds) is authoritative.
+3. Shell-level `pkill -f <pattern>` self-matches the invoking shell's own argv — bracket-trick patterns (`agentdb[-]mcp-server`) when cleaning up stray servers by hand.
