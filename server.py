@@ -198,6 +198,60 @@ def set_skill_enabled(name: str, req: SkillEnabledRequest) -> dict:
     return {"status": result}
 
 
+# --- MCP servers (mcp_servers.json: enable/disable + reload) -------------------
+# Toggles rewrite the config atomically and apply at the next runtime assembly:
+# the reload endpoint re-assembles eagerly (409 while turns are in flight —
+# an in-flight turn keeps its own graph reference and finishes unaffected).
+
+class McpEnabledRequest(BaseModel):
+    enabled: bool
+
+
+@app.get("/api/mcp")
+def list_mcp() -> dict:
+    from mcp_config import load_mcp_servers
+
+    _, statuses = load_mcp_servers()
+    report = {r["name"]: r for r in _runtime["mcp_report"]} if _runtime else {}
+    servers = []
+    for s in statuses:
+        row = s.as_dict()
+        r = report.get(s.name, {})
+        row["connected"] = r.get("connected")
+        row["tool_count"] = r.get("tool_count")
+        row["connect_error"] = r.get("error")
+        servers.append(row)
+    return {"assembled": _runtime is not None, "servers": servers}
+
+
+@app.post("/api/mcp/{name}/enabled")
+def set_mcp_enabled(name: str, req: McpEnabledRequest) -> dict:
+    from mcp_config import set_server_enabled
+
+    result = set_server_enabled(None, name, req.enabled)
+    if result.startswith("Rejected"):
+        raise HTTPException(status_code=404, detail=result)
+    return {"status": result}
+
+
+@app.post("/api/mcp/reload")
+async def reload_mcp() -> dict:
+    global _runtime
+    if ACTIVE_TURNS:
+        raise HTTPException(status_code=409, detail="turns in flight — try again when idle")
+    async with _runtime_lock:
+        try:
+            _runtime = await assemble_agent_runtime()
+        except Exception as exc:
+            _runtime = None
+            raise HTTPException(status_code=502, detail=f"re-assembly failed: {exc}")
+    return {
+        "status": "OK: runtime re-assembled",
+        "mcp_tools": len(_runtime["mcp_tools"]),
+        "mcp_report": _runtime["mcp_report"],
+    }
+
+
 # --- wiki surface (/wapi) ------------------------------------------------------
 # The in-process Python engine (wiki_engine/) serves /wapi/api/* with the same
 # contract the React UI has always consumed. (The legacy wiki-os Node engine

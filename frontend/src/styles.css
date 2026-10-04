@@ -676,6 +676,64 @@ body {
   text-decoration: underline;
 }
 
+.gear {
+  margin-left: auto;
+  padding: 3px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.gear:hover,
+.gear.active {
+  color: var(--text);
+  background: var(--panel);
+}
+
+/* --- settings view (gear → Skills | MCP) ------------------------------------ */
+
+.settings {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.settings > .tabbar {
+  border-bottom: 1px solid var(--border);
+}
+
+.skills-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.mcp-transport {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+}
+
+.mcp-status {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 3px;
+}
+
+.mcp-status.bad {
+  color: var(--err);
+}
+
 /* --- composer --------------------------------------------------------------- */
 
 .composer {

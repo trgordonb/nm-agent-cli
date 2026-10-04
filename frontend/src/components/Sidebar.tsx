@@ -1,3 +1,4 @@
+import { Settings } from "lucide-react";
 import type { Health, SessionInfo } from "../types";
 
 function relativeTime(epoch: number): string {
@@ -13,11 +14,22 @@ interface Props {
   sessions: SessionInfo[];
   activeId: string | null;
   streaming: boolean;
+  settingsOpen: boolean;
   onNewChat: () => void;
   onSelect: (sessionId: string) => void;
+  onOpenSettings: () => void;
 }
 
-export default function Sidebar({ health, sessions, activeId, streaming, onNewChat, onSelect }: Props) {
+export default function Sidebar({
+  health,
+  sessions,
+  activeId,
+  streaming,
+  settingsOpen,
+  onNewChat,
+  onSelect,
+  onOpenSettings,
+}: Props) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -51,6 +63,14 @@ export default function Sidebar({ health, sessions, activeId, streaming, onNewCh
           <>
             <div className="footer-row">
               <span className="dot ok" /> {health.model}
+              <button
+                className={`gear${settingsOpen ? " active" : ""}`}
+                aria-label="Settings — skills and MCP servers"
+                title="Skills & MCP settings"
+                onClick={onOpenSettings}
+              >
+                <Settings size={14} />
+              </button>
             </div>
             <div className="footer-row dim">
               {health.skills} skills · {health.wiki_available ? "wiki on" : "wiki off"}

@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import re
 import argparse
@@ -178,57 +179,47 @@ load_skill_tool = create_load_skill_tool(skill_library)
 
 context_compressor = create_openrouter_compressor()
 
-_FINANCETOOLKIT_URL = "https://financetoolkit.jeroenbouma.com/mcp"
-
-_MCP_KEEP_TOOLS = frozenset({
-    "breadth",
-    "discovery",
-    "market_data",
-    "models",
-    "momentum",
-    "overlap",
-    "rates",
-    "risk",
-    "volatility",
-    "search_categories",
-    "search_by_category",
-    "search_metrics",
-    "search_instruments",
-})
+# MCP servers live in mcp_servers.json (see MCP_TOGGLE_PLAN.md): per-server
+# enable/disable, ${VAR}-interpolated secrets, keep_tools filtering — loaded
+# by _load_mcp_tools() via mcp_config.py.
 
 
-_AGENT_BROWSER_SESSION = "nm-agent"
+async def _load_mcp_tools() -> tuple[list, list[dict]]:
+    """Bind MCP tool servers from mcp_servers.json (enabled, interpolated ones
+    only). Per-server resilience: each server connects on its own, so one bad
+    server logs a warning and is skipped instead of taking the rest down.
+    Returns (tools, per-server report rows)."""
+    from mcp_config import load_mcp_servers, apply_keep_tools, default_path
 
-# Finance Toolkit MCP is intentionally dormant. If it is ever re-activated,
-# add to the servers dict below:
-#   "finance_toolkit": {
-#       "transport": "streamable_http",
-#       "url": _FINANCETOOLKIT_URL,
-#       "headers": {"Authorization": f"Bearer {fmp_key}"}},
-#   }
-# and filter its tools with _MCP_KEEP_TOOLS (kept for that purpose).
-
-
-async def _load_mcp_tools() -> list:
-    """Bind MCP tool servers: local Chrome automation via agent-browser
-    (Rust CLI, no API key, core tool profile). The dedicated session name
-    keeps agent work out of the shared default browser session."""
+    client_servers, mcp_report = load_mcp_servers()
+    if not client_servers:
+        return [], [s.as_dict() for s in mcp_report]
+    # keep_tools lives in the raw config (not the interpolated pass-through);
+    # a cheap re-read here keeps the loader's contract clean.
     try:
-        server_tools = await MultiServerMCPClient(
-            {
-                "agent_browser": {
-                    "transport": "stdio",
-                    "command": "agent-browser",
-                    "args": ["mcp", "--tools", "core"],
-                    "env": {**os.environ, "AGENT_BROWSER_SESSION": _AGENT_BROWSER_SESSION},
-                }
-            }
-        ).get_tools()
-    except Exception as e:
-        logging.warning(f"agent-browser MCP failed, continuing without it: {str(e)[:300]}")
-        return []
-    logging.info(f"agent-browser MCP: bound {len(server_tools)} tools")
-    return server_tools
+        raw_servers = json.loads(default_path().read_text(encoding="utf-8")).get("servers", {})
+    except (OSError, ValueError):
+        raw_servers = {}
+    all_tools: list = []
+    for name, cfg in client_servers.items():
+        keep = raw_servers.get(name, {}).get("keep_tools")
+        try:
+            server_tools = await MultiServerMCPClient({name: cfg}).get_tools()
+        except Exception as e:
+            logging.warning(f"MCP server {name!r} failed, skipping: {str(e)[:300]}")
+            for row in mcp_report:
+                if row.name == name:
+                    row.connected = False
+                    row.error = str(e)[:300]
+            continue
+        filtered = apply_keep_tools(server_tools, keep)
+        all_tools.extend(filtered)
+        for row in mcp_report:
+            if row.name == name:
+                row.connected = True
+                row.tool_count = len(filtered)
+    logging.info(f"MCP: bound {len(all_tools)} tools from {len(client_servers)} configured server(s)")
+    return all_tools, [s.as_dict() for s in mcp_report]
 
 
 # Define the agent state
@@ -536,7 +527,7 @@ async def assemble_agent_runtime() -> dict:
     """Shared bootstrap for the CLI and the FastAPI server: MCP tools, the
     full tool list, the llm-wiki store, and the compiled graph with the
     memory block + skills index baked into the system prompt."""
-    mcp_tools = await _load_mcp_tools()
+    mcp_tools, mcp_report = await _load_mcp_tools()
     wiki = WikiStore()  # absent/empty ./llm-wiki -> tool absent, pre-flight inactive
     # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
     all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
@@ -561,6 +552,7 @@ async def assemble_agent_runtime() -> dict:
         "wiki": wiki,
         "tools": all_tools,
         "mcp_tools": mcp_tools,
+        "mcp_report": mcp_report,
         "memory_block": memory_block,
         "skill_index": skill_index,
     }

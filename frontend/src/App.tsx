@@ -5,15 +5,18 @@ import Sidebar from "./components/Sidebar";
 import Feed from "./components/Feed";
 import Composer from "./components/Composer";
 import SkillsTab from "./components/SkillsTab";
+import McpTab from "./components/McpTab";
 import { WikiTab } from "./wikios/WikiTab";
 
 let idCounter = 0;
 const nextId = () => `item-${++idCounter}`;
 
-type Tab = "chat" | "wiki" | "skills";
+type View = "chat" | "wiki" | "settings";
+type SettingsSection = "skills" | "mcp";
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("chat");
+  const [view, setView] = useState<View>("chat");
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("skills");
   const [health, setHealth] = useState<Health | null>(null);
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -163,44 +166,38 @@ export default function App() {
 
   return (
     <div className="app">
-      {tab === "chat" && (
+      {view !== "wiki" && (
         <Sidebar
           health={health}
           sessions={sessions}
           activeId={sessionId}
           streaming={streaming}
+          settingsOpen={view === "settings"}
           onNewChat={newChat}
           onSelect={loadSession}
+          onOpenSettings={() => setView("settings")}
         />
       )}
       <div className="content">
         <div className="tabbar" role="tablist">
           <button
-            className={`tab${tab === "chat" ? " active" : ""}`}
+            className={`tab${view === "chat" ? " active" : ""}`}
             role="tab"
-            aria-selected={tab === "chat"}
-            onClick={() => setTab("chat")}
+            aria-selected={view === "chat"}
+            onClick={() => setView("chat")}
           >
             Chat
           </button>
           <button
-            className={`tab${tab === "wiki" ? " active" : ""}`}
+            className={`tab${view === "wiki" ? " active" : ""}`}
             role="tab"
-            aria-selected={tab === "wiki"}
-            onClick={() => setTab("wiki")}
+            aria-selected={view === "wiki"}
+            onClick={() => setView("wiki")}
           >
             Wiki
           </button>
-          <button
-            className={`tab${tab === "skills" ? " active" : ""}`}
-            role="tab"
-            aria-selected={tab === "skills"}
-            onClick={() => setTab("skills")}
-          >
-            Skills
-          </button>
         </div>
-        {tab === "chat" ? (
+        {view === "chat" ? (
           <main className="main">
             <div className="feed" aria-live="polite">
               {items.length === 0 && (
@@ -216,10 +213,30 @@ export default function App() {
             </div>
             <Composer streaming={streaming} onSend={send} onStop={stop} />
           </main>
-        ) : tab === "wiki" ? (
+        ) : view === "wiki" ? (
           <WikiTab />
         ) : (
-          <SkillsTab />
+          <div className="settings">
+            <div className="tabbar" role="tablist" aria-label="Settings sections">
+              <button
+                className={`tab${settingsSection === "skills" ? " active" : ""}`}
+                role="tab"
+                aria-selected={settingsSection === "skills"}
+                onClick={() => setSettingsSection("skills")}
+              >
+                Skills
+              </button>
+              <button
+                className={`tab${settingsSection === "mcp" ? " active" : ""}`}
+                role="tab"
+                aria-selected={settingsSection === "mcp"}
+                onClick={() => setSettingsSection("mcp")}
+              >
+                MCP
+              </button>
+            </div>
+            {settingsSection === "skills" ? <SkillsTab /> : <McpTab />}
+          </div>
         )}
       </div>
     </div>
