@@ -532,15 +532,13 @@ async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_mo
     return await run_memory_nudge(new_messages, nudge_model=nudge_model, max_iters=max_iters)
 
 
-# CLI interface
-async def run_cli(resume_session_id: str | None = None):
-    global session_id
-
+async def assemble_agent_runtime() -> dict:
+    """Shared bootstrap for the CLI and the FastAPI server: MCP tools, the
+    full tool list, the llm-wiki store, and the compiled graph with the
+    memory block + skills index baked into the system prompt."""
     mcp_tools = await _load_mcp_tools()
-    if mcp_tools:
-        print(f"Connected to MCP servers ({len(mcp_tools)} tools)")
-    # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
     wiki = WikiStore()  # absent/empty ./llm-wiki -> tool absent, pre-flight inactive
+    # Drop OpenViking tools (shared tools.py) — the local memory layer replaces them.
     all_tools = [t for t in tools if not t.name.startswith("viking_")] + [
         session_search_tool,
         memory_manage_tool,
@@ -557,7 +555,28 @@ async def run_cli(resume_session_id: str | None = None):
     # skills apply from the next session.
     memory_block = memory.load()
     skill_index = skill_library.render_index()
-    app = build_agent(all_tools, memory_block, skill_index)
+    graph = build_agent(all_tools, memory_block, skill_index)
+    return {
+        "graph": graph,
+        "wiki": wiki,
+        "tools": all_tools,
+        "mcp_tools": mcp_tools,
+        "memory_block": memory_block,
+        "skill_index": skill_index,
+    }
+
+
+# CLI interface
+async def run_cli(resume_session_id: str | None = None):
+    global session_id
+
+    runtime = await assemble_agent_runtime()
+    mcp_tools = runtime["mcp_tools"]
+    if mcp_tools:
+        print(f"Connected to MCP servers ({len(mcp_tools)} tools)")
+    wiki = runtime["wiki"]
+    all_tools = runtime["tools"]
+    app = runtime["graph"]
 
     # --- Rich display ---------------------------------------------------------
     from rich.console import Console
@@ -566,17 +585,6 @@ async def run_cli(resume_session_id: str | None = None):
     from rich.table import Table
 
     console = Console()
-
-    def wiki_os_status() -> str:
-        """Wiki-os web UI status for the banner: URL when reachable, else a hint."""
-        url = os.getenv("WIKI_OS_URL", "http://localhost:5211")
-        try:
-            import httpx
-
-            httpx.get(url, timeout=0.5)
-            return f"[link={url}]{url}[/link] — browse ./wiki"
-        except Exception:
-            return "not running (./start.sh starts it)"
 
     def render_banner() -> None:
         info = Table.grid(padding=(0, 2))
@@ -589,7 +597,10 @@ async def run_cli(resume_session_id: str | None = None):
         )
         info.add_row("[dim]context compressor[/dim]", context_compressor.label if context_compressor else "disabled")
         info.add_row("[dim]wiki[/dim]", "llm-wiki (auto-recall + wiki_search)" if wiki.available() else "absent")
-        info.add_row("[dim]wiki-os[/dim]", wiki_os_status())
+        info.add_row(
+            "[dim]web ui[/dim]",
+            "uv run python server.py + frontend `npm run dev` (wiki engine in-process)",
+        )
         console.print(
             Panel(
                 info,
