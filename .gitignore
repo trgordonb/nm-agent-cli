@@ -11,6 +11,7 @@ wheels/
 .venv
 .env
 .kilo
+.zcode
 
 workspace/
 token-use/
@@ -37,3 +38,14 @@ wiki/*
 
 # Python bytecode inside skill scripts (gitignored at the repo level)
 skills/**/__pycache__/
+
+# Skills registry (nm-skills-registry): skills/ is a local mirror of the
+# S3-compatible registry (SKILLS_REGISTRY=s3://neuralmatrix); the authoritative
+# copies live in the bucket. Registry state + cache index are bucket siblings.
+skills/
+state/
+.nm-skills-registry-index.json
+
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/

@@ -8,6 +8,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "deepagents>=0.7.4",
     "edgartools>=5.56.0",
+    "fastapi>=0.142.2",
     "fastembed>=0.8.1",
     "langchain>=1.3.14",
     "langchain-community>=0.4.2",
@@ -21,6 +22,7 @@ dependencies = [
     "markdownify>=1.2.3",
     "markitdown[pdf]>=0.1.0",
     "nm-memory-layer",
+    "nm-skills-registry",
     "openai>=2.53.0",
     "prompt-toolkit>=3.0.53",
     "pydantic>=2.13.4",
@@ -31,10 +33,12 @@ dependencies = [
     "sqlite-vec>=0.1.9",
     "statistics>=1.0.3.5",
     "tavily>=1.1.0",
+    "uvicorn[standard]>=0.52.4",
 ]
 
 [tool.uv.sources]
-nm-memory-layer = { git = "https://github.com/trgordonb/nm-memory-layer", branch = "main" }
+nm-memory-layer = { git = "https://github.com/trgordonb/nm-memory-layer", tag = "v0.1.0" }
+nm-skills-registry = { git = "https://github.com/trgordonb/nm-skills-registry", tag = "v0.1.0" }
 
 [dependency-groups]
 dev = [

@@ -175,9 +175,25 @@ def get_session(session_id: str) -> dict:
     return {"session_id": session_id, "messages": [serialize_message(m) for m in messages]}
 
 
+class SkillEnabledRequest(BaseModel):
+    enabled: bool
+
+
 @app.get("/api/skills")
 def list_skills() -> list:
-    return agent.skill_library.list_skills()
+    """Admin view: every skill with its enabled state (Hermes-style toggles)."""
+    return agent.skill_library.list_all()
+
+
+@app.post("/api/skills/{name:path}/enabled")
+def set_skill_enabled(name: str, req: SkillEnabledRequest) -> dict:
+    """Enable/disable a skill. Takes full effect on the next session (the
+    index is injected once per session; the nudge re-render is the only
+    mid-session path)."""
+    result = agent.skill_library.set_enabled(name, req.enabled)
+    if result.startswith("Rejected"):
+        raise HTTPException(status_code=404, detail=result)
+    return {"status": result}
 
 
 # --- wiki surface (/wapi) ------------------------------------------------------
