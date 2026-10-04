@@ -1,4 +1,4 @@
-import type { ApiMessage, Health, SessionInfo } from "./types";
+import type { ApiMessage, Health, SessionInfo, SkillInfo } from "./types";
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -10,14 +10,28 @@ async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* non-JSON error body */
     }
-    throw new Error(`GET ${path} failed: ${detail}`);
+    throw new Error(`${init?.method ?? "GET"} ${path} failed: ${detail}`);
   }
   return (await res.json()) as T;
 }
 
 export const getHealth = () => fetchJSON<Health>("/api/health");
 export const getSessions = () => fetchJSON<SessionInfo[]>("/api/sessions");
-export const getSkills = () => fetchJSON<string[]>("/api/skills");
+/** Admin view: every skill in the registry, including disabled ones. */
+export const getSkills = () => fetchJSON<SkillInfo[]>("/api/skills");
+
+/** Hermes-style toggle. Applies to new sessions (index is injected per session). */
+export async function setSkillEnabled(skill: string, enabled: boolean): Promise<void> {
+  await fetchJSON<{ status: string }>(
+    `/api/skills/${encodeURIComponent(skill)}/enabled`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+}
+
 export const getSessionMessages = (sessionId: string) =>
   fetchJSON<{ session_id: string; messages: ApiMessage[] }>(
     `/api/sessions/${encodeURIComponent(sessionId)}`,

@@ -4,12 +4,13 @@ import type { FeedItem, NewItem, Health, SessionInfo, ToolCall } from "./types";
 import Sidebar from "./components/Sidebar";
 import Feed from "./components/Feed";
 import Composer from "./components/Composer";
+import SkillsTab from "./components/SkillsTab";
 import { WikiTab } from "./wikios/WikiTab";
 
 let idCounter = 0;
 const nextId = () => `item-${++idCounter}`;
 
-type Tab = "chat" | "wiki";
+type Tab = "chat" | "wiki" | "skills";
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("chat");
@@ -190,6 +191,14 @@ export default function App() {
           >
             Wiki
           </button>
+          <button
+            className={`tab${tab === "skills" ? " active" : ""}`}
+            role="tab"
+            aria-selected={tab === "skills"}
+            onClick={() => setTab("skills")}
+          >
+            Skills
+          </button>
         </div>
         {tab === "chat" ? (
           <main className="main">
@@ -207,8 +216,10 @@ export default function App() {
             </div>
             <Composer streaming={streaming} onSend={send} onStop={stop} />
           </main>
-        ) : (
+        ) : tab === "wiki" ? (
           <WikiTab />
+        ) : (
+          <SkillsTab />
         )}
       </div>
     </div>

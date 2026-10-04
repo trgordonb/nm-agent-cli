@@ -59,6 +59,15 @@ export interface Health {
   assembled: boolean;
 }
 
+/** Admin view of a registry skill (GET /api/skills — includes disabled ones). */
+export interface SkillInfo {
+  name: string;
+  description: string;
+  path: string;
+  rel_dir: string;
+  enabled: boolean;
+}
+
 export interface ApiMessage {
   type: string;
   role: Role;

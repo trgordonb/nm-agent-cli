@@ -193,6 +193,8 @@ def set_skill_enabled(name: str, req: SkillEnabledRequest) -> dict:
     result = agent.skill_library.set_enabled(name, req.enabled)
     if result.startswith("Rejected"):
         raise HTTPException(status_code=404, detail=result)
+    if result.startswith("ERROR"):
+        raise HTTPException(status_code=409, detail=result)
     return {"status": result}
 
 
