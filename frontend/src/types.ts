@@ -47,6 +47,8 @@ export interface SessionInfo {
   session_id: string;
   created_at: number;
   turns: number;
+  /** One-line title (fallback: truncated first user message); null until first turn. */
+  summary?: string | null;
 }
 
 export interface Health {

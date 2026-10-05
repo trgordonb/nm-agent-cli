@@ -61,7 +61,7 @@
         "trackers_latest",
         "trackers_ticker"
       ],
-      "enabled": false,
+      "enabled": true,
       "description": "LuxAlgo: indicator/library docs + market trackers (public, keyless; journal/brokers/account filtered out)"
     },
     "agentdb": {

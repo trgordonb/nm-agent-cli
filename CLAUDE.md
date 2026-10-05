@@ -4,7 +4,7 @@ LangGraph agent (financial research assistant: EDGAR, market data, web search) r
 
 ## Memory layer (branch `memory-layer`)
 
-The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as an **editable path dependency** via `[tool.uv.sources]` in `pyproject.toml`. Edit memory-layer code there, not here — changes apply immediately without reinstalling.
+The Hermes-style memory system (learning loop, agent-curated memory, session search, multi-level memory) lives in a **separate repo**: `~/projects/nm-memory-layer` (package `nm_memory_layer`), installed here as a **git-tag dependency** via `[tool.uv.sources]` (currently `v0.1.6`). It is NOT editable — shipping memory-layer changes means: edit there → run its tests → commit → tag (e.g. `v0.1.6`) → push → bump the tag in `pyproject.toml` here → `uv sync`.
 
 Current phase: **All five phases complete — session store, prompt memory, nudge, skills, search summarization, context compression.** The OpenViking version (`main.py` pre-rename + `llm_wiki_ingest.py`) was deleted on 2026-09-21; `alt-main.py` became `main.py` and is the single implementation.
 
@@ -13,6 +13,7 @@ Current phase: **All five phases complete — session store, prompt memory, nudg
 - `SessionStore` from `nm_memory_layer` writes every completed turn to `./sessions.db` (WAL mode; override with `SESSION_DB_PATH`).
 - Resume with `--session-id <id>`; history is rebuilt from the local store including tool-call pairs.
 - The agent gets a `session_search` tool for deliberate retrieval of past-session context (replaces OpenViking's per-turn context assembly).
+- One-line session titles (memory-layer v0.1.6): after a session's FIRST completed turn, `maybe_title_session` (main.py) stores a synchronous fallback (truncated first user message) into `session_titles`, then a daemon-thread LLM call (`create_openrouter_titler`, default ON when `OPENROUTER_*` is configured, `SESSION_TITLER_ENABLED=false` to disable) refines it. `list_sessions()` left-joins the title; the web sidebar shows it on hover (session id as fallback). Titles are written once and never regenerated.
 - The agent also gets `memory_manage` for the always-on layer: `PromptMemory` loads `./memories/MEMORY.md` + `USER.md` once per session into the system prompt (3,575-char combined budget; edits take effect next session).
 - The agent gets `skill_manage` + `load_skill` for procedural memory: the `./skills/` index (names + descriptions only) is injected once per session; full SKILL.md loads on demand — replacing OpenViking's `<skill>` abstract / `viking_read` flow with zero server dependency.
 - After each turn, `maybe_nudge` counts it; every `NUDGE_INTERVAL` turns (default 5, env `NUDGE_INTERVAL`) an internal "memory nudge" LLM call reviews the turn and may write prompt memory (`memory_manage`) or create/patch skills (`skill_manage`) — no user input, and nudge activity is never archived to `sessions.db`.

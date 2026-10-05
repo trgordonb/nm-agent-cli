@@ -2,6 +2,8 @@
 
 https://github.com/trgordonb/NM-Agent-CLI
 
+<img src="frontend/public/logo-mark.png" height="30" align="top" alt="Neural Matrix Agent"> [![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org) [![LangGraph](https://img.shields.io/badge/LangGraph-agent%20loop-1C3C3C?logo=langchain&logoColor=white)](https://langchain-ai.github.io/langgraph/) [![FastAPI](https://img.shields.io/badge/FastAPI-agent%20%2B%20wiki%20API-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com) [![Web UI](https://img.shields.io/badge/web%20UI-React%20%2B%20Vite-61DAFB?logo=react&logoColor=black)](frontend) [![memory layer](https://img.shields.io/badge/nm--memory--layer-v0.1.6-8A2BE2)](https://github.com/trgordonb/nm-memory-layer)
+
 A LangGraph financial-research agent that runs on the **Hermes-style memory layer** ([nm-memory-layer](https://github.com/trgordonb/nm-memory-layer)) — a self-improving agent whose learning loop is the memory system itself, not model weights.
 
 The agent: EDGAR filings (EdgarTools), market-data pipelines (Dukascopy tick data via the `tradedesk-dukascopy` toolchain), and web research (Jina), orchestrated by a LangGraph tool-calling loop.

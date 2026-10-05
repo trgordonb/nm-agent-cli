@@ -90,6 +90,10 @@ export default function App() {
         case "done":
           setStreaming(false);
           refreshSessions();
+          // The session titler refines the fallback title asynchronously
+          // (secondary LLM, ~1-3s after a first turn) — re-fetch once so the
+          // sidebar tooltip picks up the refined one-liner without a reload.
+          window.setTimeout(refreshSessions, 5000);
           break;
       }
     },
@@ -202,7 +206,7 @@ export default function App() {
             <div className="feed" aria-live="polite">
               {items.length === 0 && (
                 <div className="empty">
-                  <div className="empty-title">NM-Agent-CLI</div>
+                  <img src="/logo-hero.jpg" alt="Neural Matrix Agent" className="empty-logo" />
                   <div className="empty-sub">
                     Ask anything — EDGAR, market data, web research, the wiki. The agent
                     streams tool calls and answers here; anything risky stays on your machine.

@@ -27,12 +27,17 @@ function MessageRow({ item }: { item: MessageItem }) {
   }
 
   if (item.role === "tool") {
-    const failed = item.content.startsWith("Rejected:") || item.content.startsWith("Error:");
+    // A tool that ran and returned still reports transport status "success"
+    // even when the command itself failed (timeouts, nonzero exits come back
+    // as "Error: …" strings) — so the outcome label keys off the content too.
+    const failed =
+      item.status === "error" ||
+      item.content.startsWith("Rejected:") ||
+      item.content.startsWith("Error:");
     return (
       <details className={`tool-result${failed ? " failed" : ""}`}>
         <summary>
-          {failed ? "✗" : "✓"} {item.toolName ?? "tool"}
-          {item.status ? ` · ${item.status}` : ""}
+          {failed ? "✗" : "✓"} {item.toolName ?? "tool"} · {failed ? "failed" : "success"}
         </summary>
         <pre>{item.content}</pre>
       </details>

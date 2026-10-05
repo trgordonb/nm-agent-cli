@@ -401,6 +401,9 @@ async def _event_stream(req: ChatRequest) -> AsyncIterator[str]:
         yield _sse("cancelled", {"turn_id": turn_id, "persisted_turns": persisted})
     else:
         if final_new_messages:
+            # One-line session title (first turn only; fallback sync, LLM async)
+            if persisted:
+                await asyncio.to_thread(agent.maybe_title_session, session_id, final_new_messages)
             nudge_summary = await agent.maybe_nudge(session_id, final_new_messages)
             if nudge_summary:
                 yield _sse("nudge", {"summary": nudge_summary})

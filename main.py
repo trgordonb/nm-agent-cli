@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 import time
 import re
 import argparse
@@ -29,6 +30,7 @@ from nm_memory_layer import (
     create_memory_manage_tool,
     create_openrouter_compressor,
     create_openrouter_summarizer,
+    create_openrouter_titler,
     create_session_search_tool,
     create_skill_manage_tool,
     create_wiki_search_tool,
@@ -167,6 +169,7 @@ session_id = str(uuid.uuid4())
 store = SessionStore()
 search_summarizer = create_openrouter_summarizer()
 session_search_tool = create_session_search_tool(store, summarizer=search_summarizer)
+session_titler = create_openrouter_titler()
 
 memory = PromptMemory()
 memory_manage_tool = create_memory_manage_tool(memory)
@@ -514,6 +517,54 @@ async def run_memory_nudge(recent_messages: list[BaseMessage], nudge_model=None,
     return "Nudge reached its tool-call limit."
 
 
+def _fallback_title(text: str, limit: int = 60) -> str:
+    """Truncated first user message — the zero-cost session title."""
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rstrip() + "…"
+
+
+def maybe_title_session(session_id: str, new_messages: list[BaseMessage]) -> None:
+    """One-line session title, generated once after the first completed turn.
+
+    A synchronous fallback (truncated first user message) is stored
+    immediately so UI lists always have something; when a session titler is
+    configured, a daemon thread refines it via the secondary LLM and
+    overwrites the fallback. Never raises — titles are cosmetic.
+    """
+    try:
+        if store.get_session_title(session_id) is not None:
+            return
+        first_user = next(
+            (m.content for m in new_messages if isinstance(m, HumanMessage)), None
+        )
+        if not first_user or not str(first_user).strip():
+            return
+        store.set_session_title(session_id, _fallback_title(str(first_user)), model="fallback")
+
+        if session_titler is None:
+            return
+        first_assistant = next(
+            (m.content for m in new_messages if isinstance(m, AIMessage) and str(m.content).strip()),
+            "",
+        )
+
+        def _refine() -> None:
+            try:
+                title = session_titler.title_session(
+                    str(first_user), str(first_assistant) if isinstance(first_assistant, str) else ""
+                )
+                if title:
+                    store.set_session_title(session_id, title, model=session_titler.label)
+            except Exception as exc:
+                logging.warning(f"Session titler failed: {str(exc)[:200]}")
+
+        threading.Thread(target=_refine, daemon=True, name="session-titler").start()
+    except Exception as exc:
+        logging.warning(f"Session title failed: {str(exc)[:200]}")
+
+
 async def maybe_nudge(session_id: str, new_messages: list[BaseMessage], nudge_model=None, max_iters: int = 3) -> str | None:
     """Post-turn bookkeeping: count the turn and run the nudge when due."""
     nudge_policy.record_turn(session_id)
@@ -736,6 +787,8 @@ async def run_cli(resume_session_id: str | None = None):
                         logging.debug(f"Recorded turn {turn} ({len(new_messages)} messages)")
                     except Exception as record_exc:
                         logging.warning(f"Session record failed: {str(record_exc)[:200]}")
+                    # One-line session title (fallback sync, LLM refine async)
+                    maybe_title_session(session_id, new_messages)
                     # Periodic nudge: agent-curated memory review, no user input
                     try:
                         summary = await maybe_nudge(session_id, new_messages)

@@ -34,8 +34,10 @@ def alt(tmp_path_factory):
     import nm_memory_layer
     original_summarizer_factory = nm_memory_layer.create_openrouter_summarizer
     original_compressor_factory = nm_memory_layer.create_openrouter_compressor
+    original_titler_factory = nm_memory_layer.create_openrouter_titler
     nm_memory_layer.create_openrouter_summarizer = lambda: None
     nm_memory_layer.create_openrouter_compressor = lambda: None
+    nm_memory_layer.create_openrouter_titler = lambda: None
     try:
         spec = importlib.util.spec_from_file_location("main_under_test", MAIN)
         module = importlib.util.module_from_spec(spec)
@@ -43,6 +45,7 @@ def alt(tmp_path_factory):
     finally:
         nm_memory_layer.create_openrouter_summarizer = original_summarizer_factory
         nm_memory_layer.create_openrouter_compressor = original_compressor_factory
+        nm_memory_layer.create_openrouter_titler = original_titler_factory
     yield module
     module.store.close()
 
@@ -306,3 +309,53 @@ class TestMemoryWiring:
         assert "session layer marker entry" in alt.session_search_tool.invoke(
             {"query": "session layer marker"}
         )
+
+
+class TestSessionTitles:
+    def test_titler_forced_off_in_tests(self, alt):
+        """Hermetic: no OpenRouter client is built from the user's .env."""
+        assert alt.session_titler is None
+
+    def test_fallback_title_stored_once(self, alt):
+        main = alt
+        sid = main.store.new_session_id()
+        long_text = "analyze the hindsight momentum strategy in workspace" + " x" * 80
+        main.maybe_title_session(sid, [HumanMessage(content=long_text), AIMessage(content="ok")])
+
+        title = main.store.get_session_title(sid)
+        assert title is not None and title.startswith("analyze")
+        assert len(title) <= 60 and title.endswith("…")
+
+        # second call is a no-op — titles are generated once
+        main.maybe_title_session(sid, [HumanMessage(content="different topic"), AIMessage(content="z")])
+        assert main.store.get_session_title(sid) == title
+
+    def test_llm_titler_overwrites_fallback(self, alt, monkeypatch):
+        import time as time_mod
+
+        main = alt
+
+        class FakeTitler:
+            label = "fake"
+
+            def title_session(self, first_user, first_assistant):
+                return "Refined Title"
+
+        monkeypatch.setattr(main, "session_titler", FakeTitler())
+        sid = main.store.new_session_id()
+        main.maybe_title_session(sid, [HumanMessage(content="volatility question"), AIMessage(content="answer")])
+
+        # the refine runs in a daemon thread — poll briefly for the overwrite
+        deadline = time_mod.time() + 2
+        while time_mod.time() < deadline and main.store.get_session_title(sid) != "Refined Title":
+            time_mod.sleep(0.02)
+        assert main.store.get_session_title(sid) == "Refined Title"
+
+    def test_list_sessions_exposes_summary(self, alt):
+        main = alt
+        sid = main.store.new_session_id()
+        # production order: the turn is persisted first, then titled
+        main.store.record_turn(sid, [HumanMessage(content="hindsight momentum review"), AIMessage(content="ok")])
+        main.maybe_title_session(sid, [HumanMessage(content="hindsight momentum review"), AIMessage(content="ok")])
+        listing = next(s for s in main.store.list_sessions() if s["session_id"] == sid)
+        assert listing["summary"] == main.store.get_session_title(sid)
