@@ -132,6 +132,22 @@ uv run nm-skills sync raw        # raw/ is bucket-backed too (explicit sync, no 
 - Toggles (UI gear → Skills, REST `POST /api/skills/{name}/enabled`, `skill_manage(enable|disable)`) apply to the **next session** — the skills index is injected once per session.
 - Bucket versioning is the undo button for bad writes; `git tag skills-in-git-final` is the last commit carrying `skills/` content.
 
+### Syncing local edits to the registry
+
+After editing skill files in `skills/` by hand (or adding new ones), sync with the CLI — not a console upload:
+
+```bash
+uv run nm-skills push skills          # upload new/changed files only (content-aware)
+uv run nm-skills push skills --prune  # also delete registry keys that no longer exist locally
+uv run nm-skills import skills        # alternative: full idempotent re-push of everything
+```
+
+- `push` compares local MD5 vs bucket ETags, so same-size edits are caught (requires nm-skills-registry ≥ v0.1.2; `--prune` requires ≥ v0.1.2 as well — earlier versions compared file sizes only).
+- Skills the **agent** creates or patches via `skill_manage` write straight through to the bucket — they never need a manual upload. Check `nm-skills list` first; what you're about to upload may already be there.
+- Avoid console/manual uploads: they leave 0-byte directory-marker objects at the prefix (a `skills` marker once crashed `pull` — tolerated since registry v0.1.3, but the CLI is still the right tool: manual tools don't refresh the local mirror index, so `doctor` drift and subsequent syncs get confused).
+- After syncing, changes reach the agent at its **next session** (or the next nudge re-render); the UI Skills tab shows them after **Refresh**.
+- If `doctor` lists drift but `push` says `0 uploaded`, the mirror *index* is just stale — a `pull` (or the next `sync`) clears it; content was already identical.
+
 ## 9. MCP servers — operations
 
 Servers are configured in `mcp_servers.json` (git-tracked; secrets as `${VAR}` interpolated from the environment — fail-closed if unset). Toggle in the UI (gear → MCP), or:
