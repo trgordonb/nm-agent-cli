@@ -147,6 +147,7 @@ uv run nm-skills import skills        # alternative: full idempotent re-push of 
 - Avoid console/manual uploads: they leave 0-byte directory-marker objects at the prefix (a `skills` marker once crashed `pull` — tolerated since registry v0.1.3, but the CLI is still the right tool: manual tools don't refresh the local mirror index, so `doctor` drift and subsequent syncs get confused).
 - After syncing, changes reach the agent at its **next session** (or the next nudge re-render); the UI Skills tab shows them after **Refresh**.
 - If `doctor` lists drift but `push` says `0 uploaded`, the mirror *index* is just stale — a `pull` (or the next `sync`) clears it; content was already identical.
+- **Scale caveat:** the CLI syncs objects sequentially — right for `skills/` (156 files) and small `raw/` touch-ups, wrong for bulk data. `raw/` grew past 60k files / 1.5 GB (qlib feature binaries); for bulk backfills or whole-tree syncs use `rclone sync raw neuralmatrix:raw --transfers 16 -P` (R2 remote configured from the same `.env` R2 credentials) — the registry CLI remains fine for skills and incremental raw changes.
 
 ## 9. MCP servers — operations
 
